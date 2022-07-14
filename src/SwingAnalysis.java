@@ -2,19 +2,16 @@ import org.opencv.core.*;
 import org.opencv.features2d.*;
 import org.opencv.highgui.HighGui;
 import org.opencv.imgproc.Imgproc;
-import org.opencv.objdetect.Objdetect;
 import org.opencv.videoio.VideoCapture;
-import org.opencv.videoio.Videoio;
 import org.opencv.xfeatures2d.SURF;
 import util.BezierFit;
-import util.RandColor;
 
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.*;
 
-public class Test {
+public class SwingAnalysis {
 
     // TODo: SPACING WAS THE CULPRIT
 
@@ -43,7 +40,7 @@ public class Test {
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
     }
 
-    public Test() {
+    public SwingAnalysis() {
         trackingLines = new Mat();
         clubLine = new double[4];
         referencePoint = null;
@@ -64,8 +61,8 @@ public class Test {
     }
 
     public static void main(String[] args) {
-        Test test = new Test();
-        test.run();
+        SwingAnalysis swingAnalysis = new SwingAnalysis();
+        swingAnalysis.run();
     }
 
     private void run() {
