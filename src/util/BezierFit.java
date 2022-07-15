@@ -3,6 +3,7 @@ package util;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 
+import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.*;
@@ -144,6 +145,12 @@ public class BezierFit {
         return best;
     }
 
+    public static BezierFit RANSACRecursive(ArrayList<Point> points, int degrees, int s, int t, int n) {
+        ForkJoinPool pool = ForkJoinPool.commonPool();
+
+        return pool.invoke(new BezierRANSAC(points, degrees, s, t, n));
+    }
+
     /**
      * Gets points on the Bezier curve based on the given increment dt
      * @param dt Increment for points (0, 1]
@@ -219,7 +226,7 @@ public class BezierFit {
      * @param distThreshold The max distance to be considered an inlier
      * @return Returns the number of points which are within the epsilon threshold
      */
-    private int getNumInliers(int distThreshold) {
+    protected int getNumInliers(int distThreshold) {
         int numInliers = 0;
 
         for(Point p : points) {
