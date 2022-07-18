@@ -14,16 +14,16 @@ import java.util.function.DoubleToLongFunction;
 
 // Following https://www.jimherold.com/computer-science/best-fit-bezier-curve
 public class BezierFit {
-    protected ArrayList<Point> points;
+    public ArrayList<Point> points;
     protected Mat x;
     protected Mat y;
 
     protected int degrees;
 
+    private double[] ti;
+
     protected Mat px;
     protected Mat py;
-
-    public BezierFit() {}
 
     public BezierFit(ArrayList<Point> points, int degrees) {
         this.points = points;
@@ -32,6 +32,8 @@ public class BezierFit {
         y = new Mat(points.size(), 1, CvType.CV_32F);
 
         this.degrees = degrees;
+
+        ti = new double[points.size()];
 
         px = null;
         py = null;
@@ -55,8 +57,6 @@ public class BezierFit {
 
             dPartialSums[i] = dPartialSums[i - 1] + Math.sqrt(dx * dx + dy * dy);
         }
-
-        double[] ti = new double[points.size()];
 
         for(int i = 0; i < ti.length; i++)
             ti[i] = dPartialSums[i + 1] / dPartialSums[dPartialSums.length - 1];
@@ -309,5 +309,13 @@ public class BezierFit {
      */
     private double squareDist(Point p1, Point p2) {
         return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y);
+    }
+
+    /**
+     * Gets an array to represent the points in terms of time (normalized from [0, 1])
+     * @return Retuns an array which represents all the points given in the points ArrayList
+     */
+    public double[] getTi() {
+        return ti;
     }
 }

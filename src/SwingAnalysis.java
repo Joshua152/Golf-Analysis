@@ -14,25 +14,15 @@ import java.util.*;
 public class SwingAnalysis {
 
     // TODo: SPACING WAS THE CULPRIT
-
-    enum Section {
-        BACKSWING,
-        DOWNSWING,
-    }
-
     private Mat trackingLines;
     private double[] clubLine;
     private Point referencePoint;
 
-    ArrayList<Point> trackPoints;
+    private ArrayList<Point> trackPoints;
 
-    private Section section;
-    private ArrayList<Double> clubPos;
-    private int dirChange;
-
-//    private int spacing;
-
-    private PrintWriter writer;
+    private int downswingFrame;
+    private int downswingFrameY;
+    private ArrayList<Double> blurredY;
 
     private int frame;
 
@@ -47,15 +37,9 @@ public class SwingAnalysis {
 
         trackPoints = new ArrayList<Point>();
 
-        section = Section.BACKSWING;
-        clubPos = new ArrayList<Double>();
-        dirChange = 0;
-
-        try {
-            writer = new PrintWriter(new FileWriter("points.txt"));
-        } catch(IOException e) {
-            System.out.println("Unable to open file: points.txt");
-        }
+        downswingFrame = 0;
+        downswingFrameY = 0;
+        blurredY = new ArrayList<Double>();
 
         frame = 0;
     }
@@ -74,6 +58,7 @@ public class SwingAnalysis {
 
         Mat[] processedBuffer = new Mat[2];
         Mat tracer = new Mat();
+        Mat yGraph = new Mat();
 
         while(true) {
             boolean ok = capture.read(curr);
@@ -81,6 +66,8 @@ public class SwingAnalysis {
             frame++;
 
             if(frame == 515) {
+                postprocess();
+
                 BezierFit fit = new BezierFit(trackPoints,  10);
                 Point[] points = fit.getPoints(0.1);
 
@@ -93,12 +80,22 @@ public class SwingAnalysis {
                 for(Point p : trackPoints) {
                     System.out.println("new Point(" + p.x + ", " + p.y + "), ");
                 }
+
+                yGraph = new Mat(curr.rows(), 515, CvType.CV_8UC3);
+                for(int i = 0; i < yGraph.cols(); i++)
+                    Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
+
+                Imgproc.circle(yGraph, new Point(downswingFrame, downswingFrameY), 5, new Scalar(255, 255, 255), -1);
+                Imgproc.line(tracer, new Point(0, downswingFrameY), new Point(curr.cols() - 1, downswingFrameY), new Scalar(0, 255, 0));
+                HighGui.imshow("YGraph", yGraph);
             }
 
             System.out.println("frame: " + frame);
 
-            if(frame >= 515)
+            if(frame >= 515) {
                 HighGui.imshow("Tracer", tracer);
+                HighGui.imshow("YGraph", yGraph);
+            }
 
             // STOP AT FRAME 515
 
@@ -154,6 +151,8 @@ public class SwingAnalysis {
 
         Imgproc.Canny(res.clone(), res, 80, 200);
 
+
+        // TODO: WHAT?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?
         // probabilistic Hough line transform
         Mat lines = new Mat();
         Imgproc.HoughLinesP(res, lines, 1, Math.PI / 180, 80, 50, 30);
@@ -162,31 +161,31 @@ public class SwingAnalysis {
 
         Mat houghLinesDest = new Mat();
         Imgproc.cvtColor(res, houghLinesDest, Imgproc.COLOR_GRAY2BGR);
-
-        Mat houghLinesFilterd = new Mat();
-
-        HashSet<Double> okSlopes = new HashSet<Double>();
-
-        for(int i = 0; i < lines.rows(); i++) {
-            double[] l1 = lines.get(i, 0);
-            double slope1 = (l1[3] - l1[1]) / (l1[2] - l1[0]);
-
-            if(okSlopes.contains(slope1))
-                i++;
-
-            for(int j = 0; j < lines.rows(); j++) {
-                double[] l2 = lines.get(j, 0);
-                double slope2 = (l2[3] - l2[1]) / (l2[2] - l2[0]);
-
-                if(Math.min(slope1, slope2) / Math.min(slope1, slope2) <= 0.95) {
-                    houghLinesFilterd.put(houghLinesFilterd.rows(), 0 , l1);
-
-                    okSlopes.add(slope1);
-
-                    j = lines.rows();
-                }
-            }
-        }
+//
+//        Mat houghLinesFiltered = new Mat();
+//
+//        HashSet<Double> okSlopes = new HashSet<Double>();
+//
+//        for(int i = 0; i < lines.rows(); i++) {
+//            double[] l1 = lines.get(i, 0);
+//            double slope1 = (l1[3] - l1[1]) / (l1[2] - l1[0]);
+//
+//            if(okSlopes.contains(slope1))
+//                i++;
+//
+//            for(int j = 0; j < lines.rows(); j++) {
+//                double[] l2 = lines.get(j, 0);
+//                double slope2 = (l2[3] - l2[1]) / (l2[2] - l2[0]);
+//
+//                if(Math.min(slope1, slope2) / Math.max(slope1, slope2) <= 0.95) {
+//                    houghLinesFiltered.put(houghLinesFiltered.rows(), 0 , l1);
+//
+//                    okSlopes.add(slope1);
+//
+//                    j = lines.rows();
+//                }
+//            }
+//        }
 
         // use median distance insteads of random?
 
@@ -197,8 +196,6 @@ public class SwingAnalysis {
 
         for(int i = 0; i < lines.rows(); i++) {
             if(lines.get(i, 0).length == 0) {
-
-                System.out.println("hi");
                 i++;
 
                 break;
@@ -387,6 +384,9 @@ public class SwingAnalysis {
 
         // filter matches
 
+        // Only use points within 1 standard deviatino of the median
+        ArrayList<Point> filteredPoints = new ArrayList<Point>();
+
         if(clubLine != null) {
 //            for(DMatch m : matches.toArray()) {
 //            }
@@ -413,7 +413,7 @@ public class SwingAnalysis {
 
 //                    goodMatches.add(m);
 
-                    System.out.println(m.distance);
+//                    System.out.println(m.distance);
 
 //                    double dist1 = distance(new Point(clubLine[0], clubLine[1]), p1);
 //                    double dist2 = distance(new Point(clubLine[2], clubLine[3]), p1);
@@ -436,17 +436,32 @@ public class SwingAnalysis {
                     double gripDist = distance(p1, clubGrip);
 
                     if (headDist < gripDist) {
-                        Imgproc.line(trackingLines, p1, p2, new Scalar(255, 0, 0), 1);
+//                        Imgproc.line(trackingLines, p1, p2, new Scalar(255, 0, 0), 1);
 
-                        trackPoints.add(p1);
-
+//                        trackPoints.add(p1);
+                        filteredPoints.add(p1);
 //                        writer.write("[" + p1.x + ", " + p1.y + "],\n");
                     }
 //                    else
 //                        Imgproc.line(trackingLines, p1, p2, new Scalar(0, 0, 100), 1);
                 }
             }
+
+            if(filteredPoints.size() != 0) {
+                Point[] withinMedian = withinMedian(filteredPoints, 5);
+                trackPoints.addAll(Arrays.asList(withinMedian));
+
+                for (Point p : withinMedian) {
+                    Imgproc.circle(trackingLines, p, 3, new Scalar(255, 0, 0), -1);
+                }
+
+                for (Point p : withinMedian)
+                    blurredY.add(p.y);
+            }
         }
+
+        if(blurredY.size() != 0)
+            blurredY.add(blurredY.get(blurredY.size() - 1));
 //        } else {
 //            System.out.println("none");
 //        }
@@ -483,6 +498,36 @@ public class SwingAnalysis {
         return out;
     }
 
+    private void postprocess() {
+        // plot y values in array in accordance to time and blur
+        for(int i = 0; i < 5; i++) {
+            Mat blurredYMat = new Mat(blurredY.size(), 1, CvType.CV_32F);
+
+            double[] yBuffer = new double[blurredY.size()];
+            for(int j = 0; j < yBuffer.length; j++)
+                yBuffer[j] = blurredY.get(j);
+
+            blurredYMat.put(0, 0, yBuffer);
+
+            Imgproc.GaussianBlur(blurredYMat, blurredYMat, new Size(1, 21), 0, 0);
+
+            for(int j = 0; j < blurredYMat.rows(); j++)
+                blurredY.set(j, blurredYMat.get(j, 0)[0]);
+        }
+
+        for(int i = 3; i < blurredY.size() - 3; i++) {
+            double curr = blurredY.get(i);
+
+            if(blurredY.get(i - 2) > curr && blurredY.get(i - 1) > curr &&
+                    blurredY.get(i + 1) > curr && blurredY.get(i + 2) > curr) {
+                downswingFrame = i;
+                downswingFrameY = (int) curr;
+
+                i = blurredY.size();
+            }
+        }
+    }
+
     private double distance(Point p1, Point p2) {
         return Math.sqrt((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y));
     }
@@ -491,27 +536,76 @@ public class SwingAnalysis {
         return Math.sqrt((line[0] - line[2]) * (line[0] - line[2]) + (line[1] - line[3]) * (line[1] - line[3]));
     }
 
-    private double median(ArrayList<Double> vals) {
-        if(vals.size() == 0)
+//    private double median(ArrayList<Double> vals) {
+//        if(vals.size() == 0)
+//            return 0;
+//
+//        ArrayList<Double> ordered = new ArrayList<Double>();
+//
+//        ordered.add(vals.get(0));
+//
+//        for(int i = 0; i < vals.size(); i++) {
+//            double curr = vals.get(i);
+//
+//            for(int j = 0; j < ordered.size(); j++) {
+//                if(ordered.get(j) > curr) {
+//                    ordered.add(j, curr);
+//
+//                    j = ordered.size();
+//                }
+//            }
+//        }
+//
+//        return ordered.get(ordered.size() / 2);
+//    }
+
+    /**
+     * Finds points within a radius of the y median. The radius is a percent value in terms of the median value.
+     * @param points Points to find the points around the y median of
+     * @param radius Allow points within this radius of the median (pixels)
+     * @return Returns an array of the points
+     */
+    private Point[] withinMedian(ArrayList<Point> points, int radius) {
+        if(points.size() == 0)
+            return null;
+
+//        ArrayList<Point> ordered = new ArrayList<Point>();
+//
+//        ordered.add(points.get(0));
+
+        Point[] sorted = points.toArray(new Point[points.size()]);
+        Arrays.sort(sorted, (o1, o2) -> {
+            Point p1 = (Point) o1;
+            Point p2 = (Point) o2;
+
+            if(p1.y < p2.y)
+                return -1;
+
+            if(p1.y > p2.y)
+                return 1;
+
             return 0;
+        });
 
-        ArrayList<Double> ordered = new ArrayList<Double>();
+//        for(Point curr : points) {
+//            for(int j = 0; j < ordered.size(); j++) {
+//                if (ordered.get(j).y > curr.y) {
+//                    ordered.add(j, curr);
+//
+//                    j = ordered.size();
+//                }
+//            }
+//        }
 
-        ordered.add(vals.get(0));
+        Point median = sorted[sorted.length / 2];
+        int start = closestYIndex(sorted, median.y + radius, 0, sorted.length - 1);
+        int end = closestYIndex(sorted, median.y - radius, start, sorted.length - 1);
 
-        for(int i = 0; i < vals.size(); i++) {
-            double curr = vals.get(i);
+        Point[] within = new Point[end - start + 1];
+        for(int i = start; i <= end; i++)
+            within[i - start] = sorted[i];
 
-            for(int j = 0; j < ordered.size(); j++) {
-                if(ordered.get(j) > curr) {
-                    ordered.add(j, curr);
-
-                    j = ordered.size();
-                }
-            }
-        }
-
-        return ordered.get(ordered.size() / 2);
+        return within;
     }
 
     private Object median(ArrayList<Object> vals, Comparator<Object> comparator) {
@@ -535,5 +629,26 @@ public class SwingAnalysis {
         }
 
         return ordered.get(ordered.size() / 2);
+    }
+
+    /**
+     * Returns the index of the point where the given y value is the closest to the one in the array
+     * @param points The points to find the index of
+     * @param y The y value to find the closest to
+     * @param start The lower bound index for the search
+     * @param end The upper bound index for the search
+     * @return Returns the index of the closest y value of all the points in the array
+     */
+    private int closestYIndex(Point[] points, double y, int start, int end) {
+        while(start < end) {
+            int mid = start + (end - start) / 2;
+
+            if(points[mid].y <= y)
+                start = mid + 1;
+            else
+                end = mid;
+        }
+
+        return start;
     }
 }
