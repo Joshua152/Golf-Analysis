@@ -6,9 +6,6 @@ import org.opencv.videoio.VideoCapture;
 import org.opencv.xfeatures2d.SURF;
 import util.BezierFit;
 
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.*;
 
 public class SwingAnalysis {
@@ -20,8 +17,12 @@ public class SwingAnalysis {
 
     private ArrayList<Point> trackPoints;
 
+    private Point downswingPoint;
     private int downswingFrame;
     private int downswingFrameY;
+
+    private ArrayList<Integer> keyPointBasedTime;
+    private ArrayList<Point> keyPointBasedPoints;
     private ArrayList<Double> blurredY;
 
     private int frame;
@@ -39,6 +40,8 @@ public class SwingAnalysis {
 
         downswingFrame = 0;
         downswingFrameY = 0;
+        keyPointBasedTime = new ArrayList<Integer>();
+        keyPointBasedPoints = new ArrayList<Point>();
         blurredY = new ArrayList<Double>();
 
         frame = 0;
@@ -81,13 +84,17 @@ public class SwingAnalysis {
                     System.out.println("new Point(" + p.x + ", " + p.y + "), ");
                 }
 
-                yGraph = new Mat(curr.rows(), 515, CvType.CV_8UC3);
-                for(int i = 0; i < yGraph.cols(); i++)
+                yGraph = new Mat(curr.rows(), blurredY.size(), CvType.CV_8UC3);
+                for(int i = 0; i < blurredY.size(); i++)
                     Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
 
-                Imgproc.circle(yGraph, new Point(downswingFrame, downswingFrameY), 5, new Scalar(255, 255, 255), -1);
+                Imgproc.circle(yGraph, new Point(downswingFrame - keyPointBasedTime.get(0), downswingFrameY), 5, new Scalar(255, 255, 255), -1);
                 Imgproc.line(tracer, new Point(0, downswingFrameY), new Point(curr.cols() - 1, downswingFrameY), new Scalar(0, 255, 0));
+                Imgproc.putText(yGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                Imgproc.putText(yGraph, blurredY.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
                 HighGui.imshow("YGraph", yGraph);
+
+                Imgproc.circle(tracer, downswingPoint, 3, new Scalar(255, 70, 255), -1);
             }
 
             System.out.println("frame: " + frame);
@@ -450,18 +457,20 @@ public class SwingAnalysis {
             if(filteredPoints.size() != 0) {
                 Point[] withinMedian = withinMedian(filteredPoints, 5);
                 trackPoints.addAll(Arrays.asList(withinMedian));
+                System.out.println("within median: " + withinMedian.length);
 
-                for (Point p : withinMedian) {
+                for(Point p : withinMedian) {
                     Imgproc.circle(trackingLines, p, 3, new Scalar(255, 0, 0), -1);
                 }
 
-                for (Point p : withinMedian)
-                    blurredY.add(p.y);
+                Point mid = withinMedian[withinMedian.length / 2];
+                keyPointBasedTime.add(frame);
+                keyPointBasedPoints.add(mid);
             }
+        } else if(keyPointBasedTime.size() != 0) {
+            keyPointBasedTime.add(frame);
+            keyPointBasedPoints.add(keyPointBasedPoints.get(keyPointBasedPoints.size() - 1));
         }
-
-        if(blurredY.size() != 0)
-            blurredY.add(blurredY.get(blurredY.size() - 1));
 //        } else {
 //            System.out.println("none");
 //        }
@@ -500,7 +509,10 @@ public class SwingAnalysis {
 
     private void postprocess() {
         // plot y values in array in accordance to time and blur
-        for(int i = 0; i < 5; i++) {
+        for(Point p : keyPointBasedPoints)
+            blurredY.add(p.y);
+
+        for(int i = 0; i < 15; i++) {
             Mat blurredYMat = new Mat(blurredY.size(), 1, CvType.CV_32F);
 
             double[] yBuffer = new double[blurredY.size()];
@@ -509,7 +521,7 @@ public class SwingAnalysis {
 
             blurredYMat.put(0, 0, yBuffer);
 
-            Imgproc.GaussianBlur(blurredYMat, blurredYMat, new Size(1, 21), 0, 0);
+            Imgproc.GaussianBlur(blurredYMat, blurredYMat, new Size(1, 31), 0, 0);
 
             for(int j = 0; j < blurredYMat.rows(); j++)
                 blurredY.set(j, blurredYMat.get(j, 0)[0]);
@@ -518,14 +530,24 @@ public class SwingAnalysis {
         for(int i = 3; i < blurredY.size() - 3; i++) {
             double curr = blurredY.get(i);
 
-            if(blurredY.get(i - 2) > curr && blurredY.get(i - 1) > curr &&
-                    blurredY.get(i + 1) > curr && blurredY.get(i + 2) > curr) {
-                downswingFrame = i;
+            if(blurredY.get(i - 2) < curr && blurredY.get(i - 1) < curr &&
+                    blurredY.get(i + 1) < curr && blurredY.get(i + 2) < curr) {
+                downswingFrame = keyPointBasedTime.get(i);
                 downswingFrameY = (int) curr;
 
                 i = blurredY.size();
             }
         }
+
+        int insertionIndex = getInsertIndex(keyPointBasedTime, downswingFrame, 0, keyPointBasedTime.size() - 1);
+        if(insertionIndex == 0)
+            downswingPoint = keyPointBasedPoints.get(insertionIndex);
+        else if(insertionIndex == keyPointBasedTime.size() - 1)
+            downswingPoint = keyPointBasedPoints.get(insertionIndex);
+        else if(keyPointBasedTime.get(insertionIndex) - downswingFrame < downswingFrame - keyPointBasedTime.get(insertionIndex - 1))
+            downswingPoint = keyPointBasedPoints.get(insertionIndex);
+        else
+            downswingPoint = keyPointBasedPoints.get(insertionIndex - 1);
     }
 
     private double distance(Point p1, Point p2) {
@@ -644,6 +666,27 @@ public class SwingAnalysis {
             int mid = start + (end - start) / 2;
 
             if(points[mid].y <= y)
+                start = mid + 1;
+            else
+                end = mid;
+        }
+
+        return start;
+    }
+
+    /**
+     * Returns where the given value should be inserted in the orderd list
+     * @param list The orderd list
+     * @param value The value to find the insertion index
+     * @param start The lower bound for the search
+     * @param end The upper bound for the search
+     * @return Returns the given index where the value should be placed so that the list stays ordered
+     */
+    private int getInsertIndex(ArrayList<Integer> list, double value, int start, int end) {
+        while(start < end) {
+            int mid = start + (end - start) / 2;
+
+            if(list.get(mid) <= value)
                 start = mid + 1;
             else
                 end = mid;
