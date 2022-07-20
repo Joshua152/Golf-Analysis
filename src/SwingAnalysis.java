@@ -1,6 +1,7 @@
 import org.opencv.core.*;
 import org.opencv.features2d.*;
 import org.opencv.highgui.HighGui;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.xfeatures2d.SURF;
@@ -63,6 +64,8 @@ public class SwingAnalysis {
         Mat tracer = new Mat();
         Mat yGraph = new Mat();
 
+        Mat swingtracer = Imgcodecs.imread("tracer.jpg");
+
         while(true) {
             boolean ok = capture.read(curr);
 
@@ -119,6 +122,7 @@ public class SwingAnalysis {
                    Mat res = track(processedBuffer[1], processedBuffer[0], curr, prev);
 
                    HighGui.imshow("Preprocess", preprocess(curr, prev));
+                   Core.add(res, swingtracer, res);
                    HighGui.imshow("Track", res);
                }
 
@@ -153,8 +157,11 @@ public class SwingAnalysis {
         // sharpen
         Imgproc.cvtColor(res, res, Imgproc.COLOR_BGR2GRAY);
 
-        Mat dest = new Mat(res.size(), res.type());
-        Core.addWeighted(res, 1.5, dest, -0.5, 0, dest);
+//        Mat dest = new Mat(res.size(), res.type());
+//        Core.addWeighted(res, 1.5, dest, -0.5, 0, res);
+
+        Mat kernel = Imgproc.getStructuringElement(Imgproc.CV_SHAPE_RECT, new Size(5, 5), new Point(2, 2));
+        Imgproc.morphologyEx(res, res, Imgproc.MORPH_CLOSE, kernel);
 
         Imgproc.Canny(res.clone(), res, 80, 200);
 

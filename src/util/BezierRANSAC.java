@@ -102,15 +102,15 @@ public class BezierRANSAC extends RecursiveTask<BezierFit> {
             // look for start and end of wanted time zone and pick random from that subset
             int endIndex = 0;
             for(int j = 0; j < s; j++) {
-//                chosen.add((int) (Math.random() * (points.size() / s)) + (j * points.size() / s));
+                chosen.add((int) (Math.random() * (points.size() / s)) + (j * points.size() / s));
 
-                int startIndex = endIndex;
-
-                endIndex = getTimeIndex((j + 1.0) / s, startIndex, ti.length - 1);
-
-//                System.out.println(startIndex + " " + endIndex);
-
-                chosen.add((int) (Math.random() * (endIndex - startIndex + 1) + startIndex));
+//                int startIndex = endIndex;
+//
+//                endIndex = getTimeIndex((j + 1.0) / s, startIndex, ti.length - 1);
+//
+////                System.out.println(startIndex + " " + endIndex);
+//
+//                chosen.add((int) (Math.random() * (endIndex - startIndex + 1) + startIndex));
             }
 
             for(Iterator<Integer> iterator = chosen.iterator(); iterator.hasNext(); ) {
