@@ -9,6 +9,7 @@ import java.util.concurrent.RecursiveTask;
 
 public class BezierRANSAC extends RecursiveTask<BezierFit> {
     private ArrayList<Point> points;
+
     private int degrees;
 
     private int s;

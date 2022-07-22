@@ -16,13 +16,15 @@ public class SwingAnalysis {
     private double[] clubLine;
     private Point referencePoint;
 
-    private ArrayList<Point> trackPoints;
+    private ArrayList<Point> points;
+    private ArrayList<Point> backswingPoints;
+    private ArrayList<Point> downswingPoints;
 
     private Point downswingPoint;
     private int downswingFrame;
     private int downswingFrameY;
 
-    private ArrayList<Integer> keyPointBasedTime;
+    private ArrayList<Integer> keyPointBasedTime; // just replace with int for keyPointBasedPoints frame # offset?
     private ArrayList<Point> keyPointBasedPoints;
     private ArrayList<Double> blurredY;
 
@@ -37,7 +39,9 @@ public class SwingAnalysis {
         clubLine = new double[4];
         referencePoint = null;
 
-        trackPoints = new ArrayList<Point>();
+        points = new ArrayList<Point>();
+        backswingPoints = new ArrayList<Point>();
+        downswingPoints = new ArrayList<Point>();
 
         downswingFrame = 0;
         downswingFrameY = 0;
@@ -66,6 +70,8 @@ public class SwingAnalysis {
 
         Mat swingtracer = Imgcodecs.imread("tracer.jpg");
 
+        Mat segmentation = new Mat();
+
         while(true) {
             boolean ok = capture.read(curr);
 
@@ -74,7 +80,7 @@ public class SwingAnalysis {
             if(frame == 515) {
                 postprocess();
 
-                BezierFit fit = new BezierFit(trackPoints,  10);
+                BezierFit fit = new BezierFit(points,  10);
                 Point[] points = fit.getPoints(0.1);
 
                 tracer = trackingLines.clone();
@@ -83,7 +89,7 @@ public class SwingAnalysis {
                     System.out.println("line: " + points[i - 1] + " -> " + points[i]);
                 }
 
-                for(Point p : trackPoints) {
+                for(Point p : this.points) {
                     System.out.println("new Point(" + p.x + ", " + p.y + "), ");
                 }
 
@@ -98,6 +104,13 @@ public class SwingAnalysis {
                 HighGui.imshow("YGraph", yGraph);
 
                 Imgproc.circle(tracer, downswingPoint, 3, new Scalar(255, 70, 255), -1);
+
+                segmentation = Mat.zeros(curr.size(), CvType.CV_8UC3);
+                for(Point p : backswingPoints)
+                    Imgproc.circle(segmentation, p, 3, new Scalar(255, 0, 0), -1);
+
+                for(Point p : downswingPoints)
+                    Imgproc.circle(segmentation, p, 3, new Scalar(100, 255, 255), -1);
             }
 
             System.out.println("frame: " + frame);
@@ -105,6 +118,7 @@ public class SwingAnalysis {
             if(frame >= 515) {
                 HighGui.imshow("Tracer", tracer);
                 HighGui.imshow("YGraph", yGraph);
+                HighGui.imshow("Segmentation", segmentation);
             }
 
             // STOP AT FRAME 515
@@ -130,15 +144,9 @@ public class SwingAnalysis {
             }
 
             prev = curr.clone();
+
+            System.out.println("REFERENCE POINT: " + referencePoint);
         }
-    }
-
-    // returns if buffer is full
-    private boolean handleBuffer(Mat[] processedBuffer, Mat curr, Mat prev) {
-        processedBuffer[0] = processedBuffer[1];
-        processedBuffer[1] = preprocess(curr, prev);
-
-        return processedBuffer[0] != null;
     }
 
     private Mat preprocess(Mat curr, Mat prev) {
@@ -175,7 +183,7 @@ public class SwingAnalysis {
 
         Mat houghLinesDest = new Mat();
         Imgproc.cvtColor(res, houghLinesDest, Imgproc.COLOR_GRAY2BGR);
-//
+
 //        Mat houghLinesFiltered = new Mat();
 //
 //        HashSet<Double> okSlopes = new HashSet<Double>();
@@ -242,57 +250,7 @@ public class SwingAnalysis {
                 referencePoint = new Point(clubLine[2], clubLine[3]);
         }
 
-//        if(clubLine != null) {
-//            if(referencePoint == null) {
-//                if(clubLine[1] < clubLine[3])
-//                    referencePoint = new Point(clubLine[0], clubLine[1]);
-//                else
-//                    referencePoint = new Point(clubLine[2], clubLine[3]);
-//            } else {
-//                double dist1 = distance(new Point(clubLine[0], clubLine[1]), referencePoint);
-//                double dist2 = distance(new Point(clubLine[2], clubLine[3]), referencePoint);
-//
-//                if(dist1 < dist2)
-//                    referencePoint = new Point(clubLine[0], clubLine[1]);
-//                else
-//                    referencePoint = new Point(clubLine[2], clubLine[3]);
-//            }
-//        }
-
         HighGui.imshow("Hough Lines", houghLinesDest);
-
-//        // Hough line transform
-//
-//        Mat lines = new Mat();
-//        Imgproc.HoughLines(res, lines, 1, Math.PI / 180, 150);
-//
-//        for(int i = 0; i < lines.rows(); i++) {
-//            double rho = lines.get(i, 0)[0];
-//            double theta = lines.get(i, 0)[1];
-//
-//            double a = Math.cos(theta);
-//            double b = Math.sin(theta);
-//
-//            double x0 = a * rho;
-//            double y0 = b * rho;
-//
-//            Point p1 = new Point(Math.round(x0 + 1000 * -b), Math.round(y0 + 1000 * a));
-//            Point p2 = new Point(Math.round(x0 - 1000 * -b), Math.round(y0 - 1000 * a));
-//
-//            Imgproc.line(curr, p1, p2, new Scalar(0, 0, 255), 3, Imgproc.LINE_AA, 0);
-//        }
-
-//        Core.absdiff(curr, prev, res);
-//
-//        byte[] conv = new byte[] {
-//          -1, -1, -1,
-//          -1, 9, -1,
-//          -1, -1, -1
-//        };
-//        ByteBuffer buffer = ByteBuffer.wrap(conv);
-//        System.out.println(Arrays.toString(buffer.array()));
-//        Mat kernel = new Mat(3, 3, CvType.CV_32F, ByteBuffer.wrap(conv));
-//        Imgproc.filter2D(res, res, -1, kernel);
 
         Imgproc.cvtColor(res, res, Imgproc.COLOR_GRAY2BGR);
 
@@ -338,63 +296,10 @@ public class SwingAnalysis {
         MatOfDMatch matches = new MatOfDMatch();
         matcher.match(currDescriptors, prevDescriptors, matches, new Mat()); // query, train
 
-//        LinkedList<DMatch> goodMatches = new LinkedList<DMatch>();
-
-        System.out.println("club line: " + Arrays.toString(clubLine));
-
-        // TODO: CHANGE TO COMPARING TO THE KEYPOINT FROM 2 TIMES AGO
-
-        // find median x val of matches to find probable club pos to use in determining swing section
+//        System.out.println("club line: " + Arrays.toString(clubLine));
 
         KeyPoint[] currKPArray = currKP.toArray();
         KeyPoint[] prevKPArray = prevKP.toArray();
-
-//        ArrayList<Double> xVals = new ArrayList<Double>();
-//        for(DMatch m : matches.toArray())
-//            xVals.add(currKPArray[m.queryIdx].pt.x);
-//
-//        clubPos.add(median(xVals));
-//
-//        Scalar color = new Scalar(255, 255, 0);
-//
-//        if(clubPos.size() >= 7) {
-//            clubPos.remove(0);
-//
-//            int numMonotonic = 0;
-//            for(int i = 0; i < clubPos.size() - 1; i++) {
-////                if(section == Section.BACKSWING) {
-////                    if(clubPos.get(i))
-////                } else if(section == Section.DOWNSWING) {
-////
-////                }
-//
-//                if(clubPos.get(i) < clubPos.get(i + 1))
-//                    numMonotonic++;
-//                else
-//                    numMonotonic--;
-//            }
-//
-//            System.out.println("nm: " + numMonotonic);
-//
-//            if(numMonotonic > 0)
-//                color = new Scalar(0, 255, 0); // right
-//            else if(numMonotonic < 0)
-//                color = new Scalar(0, 0, 255); // left
-//
-//            System.out.println("color: " + color.toString());
-//        }
-//
-//        int size = 100;
-//        if(clubPos.size() > size) {
-//            int threshold = (int) (size * 0.9);
-//
-//            int num = 0;
-//            for(int i = size; i < clubPos.size(); i++) {
-//                if(dirChange == 0) {
-//
-//                }
-//            }
-//        }
 
         // filter matches
 
@@ -402,21 +307,6 @@ public class SwingAnalysis {
         ArrayList<Point> filteredPoints = new ArrayList<Point>();
 
         if(clubLine != null) {
-//            for(DMatch m : matches.toArray()) {
-//            }
-//
-//            DMatch m = (DMatch) median(new ArrayList<Object>(Arrays.asList(matches.toArray())), (o1, o2) -> {
-//               DMatch m1 = (DMatch) o1;
-//               DMatch m2 = (DMatch) o2;
-//
-//               if(currKPArray[m1.queryIdx].pt.x > currKPArray[m2.queryIdx].pt.x)
-//                   return 1;
-//               else if(currKPArray[m1.queryIdx].pt.x < currKPArray[m2.queryIdx].pt.x)
-//                   return -1;
-//               else
-//                   return 0;
-//            });
-
             for (DMatch m : matches.toArray()) {
                 Point p1 = currKPArray[m.queryIdx].pt;
                 Point p2 = prevKPArray[m.trainIdx].pt;
@@ -424,13 +314,6 @@ public class SwingAnalysis {
                 if (Math.abs(p1.x - p2.x) < 20 && Math.abs(p1.y - p2.y) < 20 &&
                         !(p1.x > Math.min(clubLine[0], clubLine[2]) && p1.x < Math.max(clubLine[0], clubLine[2]) &&
                                 p1.y > Math.min(clubLine[1], clubLine[3]) && p1.y < Math.max(clubLine[1], clubLine[3]))) {
-
-//                    goodMatches.add(m);
-
-//                    System.out.println(m.distance);
-
-//                    double dist1 = distance(new Point(clubLine[0], clubLine[1]), p1);
-//                    double dist2 = distance(new Point(clubLine[2], clubLine[3]), p1);
 
                     double refDist1 = distance(new Point(clubLine[0], clubLine[1]), referencePoint);
                     double refDist2 = distance(new Point(clubLine[2], clubLine[3]), referencePoint);
@@ -463,7 +346,7 @@ public class SwingAnalysis {
 
             if(filteredPoints.size() != 0) {
                 Point[] withinMedian = withinMedian(filteredPoints, 5);
-                trackPoints.addAll(Arrays.asList(withinMedian));
+                points.addAll(Arrays.asList(withinMedian));
                 System.out.println("within median: " + withinMedian.length);
 
                 for(Point p : withinMedian) {
@@ -478,28 +361,6 @@ public class SwingAnalysis {
             keyPointBasedTime.add(frame);
             keyPointBasedPoints.add(keyPointBasedPoints.get(keyPointBasedPoints.size() - 1));
         }
-//        } else {
-//            System.out.println("none");
-//        }
-
-//        MatOfDMatch goodMatchesMat = new MatOfDMatch();
-//        goodMatchesMat.fromList(goodMatches);
-
-//        LinkedList<Point> queryList = new LinkedList<Point>();
-//        LinkedList<Point> trainList = new LinkedList<Point>();
-//
-//        DMatch[] matchesArray = matches.toArray();
-//        for(int i = 0; i < matchesArray.length; i++) {
-//            DMatch match = matchesArray[i];
-//
-//            int x1 = currKP.get
-//        }
-
-        // draw matches
-
-//        Features2d.drawMatches(currOriginal, currKP, prevOriginal, prevKP, goodMatchesMat, out);
-//
-//        Imgproc.resize(out, out, new Size(out.width() / 2, out.height() / 2));
 
         Mat out = new Mat();
 
@@ -546,15 +407,87 @@ public class SwingAnalysis {
             }
         }
 
-        int insertionIndex = getInsertIndex(keyPointBasedTime, downswingFrame, 0, keyPointBasedTime.size() - 1);
-        if(insertionIndex == 0)
-            downswingPoint = keyPointBasedPoints.get(insertionIndex);
-        else if(insertionIndex == keyPointBasedTime.size() - 1)
-            downswingPoint = keyPointBasedPoints.get(insertionIndex);
-        else if(keyPointBasedTime.get(insertionIndex) - downswingFrame < downswingFrame - keyPointBasedTime.get(insertionIndex - 1))
-            downswingPoint = keyPointBasedPoints.get(insertionIndex);
-        else
-            downswingPoint = keyPointBasedPoints.get(insertionIndex - 1);
+        int downswingIndex = getInsertIndex(keyPointBasedTime, downswingFrame, 0, keyPointBasedTime.size() - 1);
+        if(downswingIndex != 0 && downswingIndex != keyPointBasedTime.size() &&
+                keyPointBasedTime.get(downswingIndex) - downswingFrame >= downswingFrame - keyPointBasedTime.get(downswingIndex - 1)) {
+            downswingIndex--;
+        }
+
+        downswingPoint = keyPointBasedPoints.get(downswingIndex);
+
+        System.out.println("downswingIndex: " + downswingIndex);
+        System.out.println("keyPointBasedPoints size: " + keyPointBasedPoints.size());
+
+        int trackPointsIndex = points.size() - 1;
+        for(int i = keyPointBasedPoints.size() - 1; i >= downswingIndex; i--) {
+            while(!keyPointBasedPoints.get(i).equals(points.get(trackPointsIndex))) {
+                downswingPoints.add(0, points.get(trackPointsIndex));
+                System.out.println("add");
+
+                trackPointsIndex--;
+            }
+
+            System.out.println("done: " + i);
+
+            downswingPoints.add(0, points.get(trackPointsIndex));
+            trackPointsIndex--;
+
+            Point curr = keyPointBasedPoints.get(i);
+            while(keyPointBasedPoints.get(i).equals(curr))
+                i--;
+
+            i++;
+        }
+
+        downswingPoints.add(0, points.get(trackPointsIndex));
+
+        for(int i = 0; i < trackPointsIndex; i++)
+            backswingPoints.add(points.get(i));
+
+        int top = 0;
+        int side = 0;
+        int bottom = 0;
+
+        for(int i = 0; i < downswingPoints.size(); i++) {
+            Point p = downswingPoints.get(i);
+            double angle = Math.atan2(referencePoint.y - p.y, p.x - referencePoint.x);
+
+            if(inSection(angle, "top"))
+                top++;
+            else if(inSection(angle, "side"))
+                side++;
+            else if(inSection(angle, "bottom"))
+                bottom++;
+        }
+
+        int sideMultiplier = (int) ((top * 0.3) / side);
+        int bottomMultiplier = (int) ((top * 0.2) / bottom);
+        for(int i = 0; i < downswingPoints.size(); i++) {
+            Point p = downswingPoints.get(i);
+            double angle = Math.atan2(referencePoint.y - p.y, p.x - referencePoint.x);
+
+            int currMultiplier = 1;
+
+            if(inSection(angle, "side"))
+                currMultiplier = sideMultiplier;
+            else if(inSection(angle, "bottom"))
+                currMultiplier = bottomMultiplier;
+
+            if(currMultiplier > 1) {
+                for(int j = 0; j < currMultiplier; j++)
+                    downswingPoints.add(i, downswingPoints.get(i));
+
+                i += currMultiplier;
+            }
+        }
+    }
+
+    // returns if buffer is full
+    private boolean handleBuffer(Mat[] processedBuffer, Mat curr, Mat prev) {
+        processedBuffer[0] = processedBuffer[1];
+        processedBuffer[1] = preprocess(curr, prev);
+
+        return processedBuffer[0] != null;
     }
 
     private double distance(Point p1, Point p2) {
@@ -565,29 +498,6 @@ public class SwingAnalysis {
         return Math.sqrt((line[0] - line[2]) * (line[0] - line[2]) + (line[1] - line[3]) * (line[1] - line[3]));
     }
 
-//    private double median(ArrayList<Double> vals) {
-//        if(vals.size() == 0)
-//            return 0;
-//
-//        ArrayList<Double> ordered = new ArrayList<Double>();
-//
-//        ordered.add(vals.get(0));
-//
-//        for(int i = 0; i < vals.size(); i++) {
-//            double curr = vals.get(i);
-//
-//            for(int j = 0; j < ordered.size(); j++) {
-//                if(ordered.get(j) > curr) {
-//                    ordered.add(j, curr);
-//
-//                    j = ordered.size();
-//                }
-//            }
-//        }
-//
-//        return ordered.get(ordered.size() / 2);
-//    }
-
     /**
      * Finds points within a radius of the y median. The radius is a percent value in terms of the median value.
      * @param points Points to find the points around the y median of
@@ -597,10 +507,6 @@ public class SwingAnalysis {
     private Point[] withinMedian(ArrayList<Point> points, int radius) {
         if(points.size() == 0)
             return null;
-
-//        ArrayList<Point> ordered = new ArrayList<Point>();
-//
-//        ordered.add(points.get(0));
 
         Point[] sorted = points.toArray(new Point[points.size()]);
         Arrays.sort(sorted, (o1, o2) -> {
@@ -616,16 +522,6 @@ public class SwingAnalysis {
             return 0;
         });
 
-//        for(Point curr : points) {
-//            for(int j = 0; j < ordered.size(); j++) {
-//                if (ordered.get(j).y > curr.y) {
-//                    ordered.add(j, curr);
-//
-//                    j = ordered.size();
-//                }
-//            }
-//        }
-
         Point median = sorted[sorted.length / 2];
         int start = closestYIndex(sorted, median.y + radius, 0, sorted.length - 1);
         int end = closestYIndex(sorted, median.y - radius, start, sorted.length - 1);
@@ -635,29 +531,6 @@ public class SwingAnalysis {
             within[i - start] = sorted[i];
 
         return within;
-    }
-
-    private Object median(ArrayList<Object> vals, Comparator<Object> comparator) {
-        if(vals.size() == 0)
-            return 0;
-
-        ArrayList<Object> ordered = new ArrayList<Object>();
-
-        ordered.add(vals.get(0));
-
-        for(int i = 0; i < vals.size(); i++) {
-            Object curr = vals.get(i);
-
-            for(int j = 0; j < ordered.size(); j++) {
-                if(comparator.compare(ordered.get(j), curr) > 0) {
-                    ordered.add(j, curr);
-
-                    j = ordered.size();
-                }
-            }
-        }
-
-        return ordered.get(ordered.size() / 2);
     }
 
     /**
@@ -700,5 +573,24 @@ public class SwingAnalysis {
         }
 
         return start;
+    }
+
+    /**
+     * Gets if the given angle (radians) is within the given portion of the swing
+     * @param angle The angle see the section of [-pi, pi] (angle from atan2)
+     * @param section The section of the swing ("top", "side", "bottom")
+     * @return Returns if the angle is in the given section
+     */
+    public static boolean inSection(double angle, String section) {
+        switch (section) {
+            case "top":
+                return angle >= 0 && angle < (3 * Math.PI / 4);
+            case "side":
+                return (angle >= (3 * Math.PI / 4) && angle <= Math.PI) || (angle >= -Math.PI && angle <= (-3 * Math.PI / 4));
+            case "bottom":
+                return angle > (-3 * Math.PI / 4) && angle <= (-Math.PI / 4);
+        }
+
+        return false;
     }
 }
