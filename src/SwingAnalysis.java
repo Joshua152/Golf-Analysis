@@ -89,7 +89,7 @@ public class SwingAnalysis {
                     System.out.println("line: " + points[i - 1] + " -> " + points[i]);
                 }
 
-                for(Point p : this.points) {
+                for(Point p : downswingPoints) {
                     System.out.println("new Point(" + p.x + ", " + p.y + "), ");
                 }
 
@@ -168,8 +168,8 @@ public class SwingAnalysis {
 //        Mat dest = new Mat(res.size(), res.type());
 //        Core.addWeighted(res, 1.5, dest, -0.5, 0, res);
 
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.CV_SHAPE_RECT, new Size(5, 5), new Point(2, 2));
-        Imgproc.morphologyEx(res, res, Imgproc.MORPH_CLOSE, kernel);
+//        Mat kernel = Imgproc.getStructuringElement(Imgproc.CV_SHAPE_RECT, new Size(5, 5), new Point(2, 2));
+//        Imgproc.morphologyEx(res, res, Imgproc.MORPH_CLOSE, kernel);
 
         Imgproc.Canny(res.clone(), res, 80, 200);
 
@@ -444,8 +444,14 @@ public class SwingAnalysis {
         for(int i = 0; i < trackPointsIndex; i++)
             backswingPoints.add(points.get(i));
 
+        // remove first 10% of downswing points b/c lots of noise
+        int n = (int) (downswingPoints.size() * 0.1);
+        for(int i = 0; i < n; i++)
+            downswingPoints.remove(0);
+
         int top = 0;
-        int side = 0;
+        int sideTop = 0;
+        int sideBottom = 0;
         int bottom = 0;
 
         for(int i = 0; i < downswingPoints.size(); i++) {
@@ -454,31 +460,45 @@ public class SwingAnalysis {
 
             if(inSection(angle, "top"))
                 top++;
-            else if(inSection(angle, "side"))
-                side++;
+            else if(inSection(angle, "side-top"))
+                sideTop++;
+            else if(inSection(angle, "side-bottom"))
+                sideBottom++;
             else if(inSection(angle, "bottom"))
                 bottom++;
         }
 
-        int sideMultiplier = (int) ((top * 0.3) / side);
-        int bottomMultiplier = (int) ((top * 0.2) / bottom);
+        int sideTopMultiplier = (int) ((top * 0.40) / sideTop);
+        int sideBottomMultiplier = (int) ((top * 0.20) / sideBottom); // 25
+        int bottomMultiplier = (int) ((top * 0.30) / bottom);
+
+        System.out.println("MULTIPLIER (SIDE TOP): " + sideTopMultiplier);
+        System.out.println("MULTIPLIER (SIDE BOTTOM): " + sideBottomMultiplier);
+        System.out.println("MULTIPLIER (BOTTOM): " + bottomMultiplier);
+        System.out.println("TOP: " + top);
+        System.out.println("SIDE TOP: " + sideTop);
+        System.out.println("SIDE BOTTOM: " + sideBottom);
+        System.out.println("BOTTOM: " + bottom);
+
         for(int i = 0; i < downswingPoints.size(); i++) {
             Point p = downswingPoints.get(i);
             double angle = Math.atan2(referencePoint.y - p.y, p.x - referencePoint.x);
 
             int currMultiplier = 1;
 
-            if(inSection(angle, "side"))
-                currMultiplier = sideMultiplier;
+            if(inSection(angle, "side-top"))
+                currMultiplier = sideTopMultiplier;
+            else if(inSection(angle, "side-bottom"))
+                currMultiplier = sideBottomMultiplier;
             else if(inSection(angle, "bottom"))
                 currMultiplier = bottomMultiplier;
 
-            if(currMultiplier > 1) {
-                for(int j = 0; j < currMultiplier; j++)
-                    downswingPoints.add(i, downswingPoints.get(i));
+            currMultiplier = Math.max(currMultiplier, 1);
 
-                i += currMultiplier;
-            }
+            for(int j = 0; j < currMultiplier - 1; j++)
+                downswingPoints.add(i, downswingPoints.get(i));
+
+            i += currMultiplier - 1;
         }
     }
 
@@ -584,11 +604,14 @@ public class SwingAnalysis {
     public static boolean inSection(double angle, String section) {
         switch (section) {
             case "top":
-                return angle >= 0 && angle < (3 * Math.PI / 4);
-            case "side":
-                return (angle >= (3 * Math.PI / 4) && angle <= Math.PI) || (angle >= -Math.PI && angle <= (-3 * Math.PI / 4));
+                return angle >= 0 && angle < 2.5;//(3 * Math.PI / 4);
+            case "side-top":
+//                return (angle >= (3 * Math.PI / 4) && angle <= Math.PI) || (angle >= -Math.PI && angle <= (-3 * Math.PI / 4));
+                return angle >= 2.5 && angle <= Math.PI;
+            case "side-bottom":
+                return angle >= -Math.PI && angle <= (-3 * Math.PI / 4);
             case "bottom":
-                return angle > (-3 * Math.PI / 4) && angle <= (-Math.PI / 4);
+                return angle > (-3 * Math.PI / 4) && angle <= 0;
         }
 
         return false;
