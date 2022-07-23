@@ -468,9 +468,9 @@ public class SwingAnalysis {
                 bottom++;
         }
 
-        int sideTopMultiplier = (int) ((top * 0.40) / sideTop);
+        int sideTopMultiplier = (int) ((top * 0.5) / sideTop); // 0.4
         int sideBottomMultiplier = (int) ((top * 0.20) / sideBottom); // 25
-        int bottomMultiplier = (int) ((top * 0.30) / bottom);
+        int bottomMultiplier = (int) ((top * 0.35) / bottom); // 0.3
 
         System.out.println("MULTIPLIER (SIDE TOP): " + sideTopMultiplier);
         System.out.println("MULTIPLIER (SIDE BOTTOM): " + sideBottomMultiplier);
