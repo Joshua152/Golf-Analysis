@@ -1,5 +1,6 @@
 package util;
 
+import data.TimedPoint;
 import org.opencv.core.Point;
 
 import java.util.ArrayList;
@@ -8,7 +9,7 @@ import java.util.TreeSet;
 import java.util.concurrent.RecursiveTask;
 
 public class BezierRANSAC extends RecursiveTask<BezierFit> {
-    private ArrayList<Point> points;
+    private ArrayList<TimedPoint> points;
 
     private int degrees;
 
@@ -22,7 +23,7 @@ public class BezierRANSAC extends RecursiveTask<BezierFit> {
 
     private double[] ti;
 
-    public BezierRANSAC(ArrayList<Point> points, int degrees, int s, int t, int n) {
+    public BezierRANSAC(ArrayList<TimedPoint> points, int degrees, int s, int t, int n) {
 //        this.points = points;
 //        this.degrees = degrees;
 //
@@ -35,7 +36,7 @@ public class BezierRANSAC extends RecursiveTask<BezierFit> {
         this(points, degrees, s, t, n, n);
     }
 
-    public BezierRANSAC(ArrayList<Point> points, int degrees, int s, int t, int n, int originalN) {
+    public BezierRANSAC(ArrayList<TimedPoint> points, int degrees, int s, int t, int n, int originalN) {
         this.points = points;
         this.degrees = degrees;
 

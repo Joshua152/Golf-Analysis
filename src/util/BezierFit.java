@@ -1,5 +1,6 @@
 package util;
 
+import data.TimedPoint;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 
@@ -14,7 +15,7 @@ import java.util.function.DoubleToLongFunction;
 
 // Following https://www.jimherold.com/computer-science/best-fit-bezier-curve
 public class BezierFit {
-    public ArrayList<Point> points;
+    public ArrayList<? extends Point> points;
     protected Mat x;
     protected Mat y;
 
@@ -25,7 +26,7 @@ public class BezierFit {
     protected Mat px;
     protected Mat py;
 
-    public BezierFit(ArrayList<Point> points, int degrees) {
+    public BezierFit(ArrayList<? extends Point> points, int degrees) {
         this.points = points;
 
         x = new Mat(points.size(), 1, CvType.CV_32F);
@@ -145,7 +146,7 @@ public class BezierFit {
         return best;
     }
 
-    public static BezierFit RANSACRecursive(ArrayList<Point> points, int degrees, int s, int t, int n) {
+    public static BezierFit RANSACRecursive(ArrayList<TimedPoint> points, int degrees, int s, int t, int n) {
         ForkJoinPool pool = ForkJoinPool.commonPool();
 
         return pool.invoke(new BezierRANSAC(points, degrees, s, t, n));
@@ -175,6 +176,15 @@ public class BezierFit {
         }
 
         return points;
+    }
+
+    /**
+     * Gets the point given the value t (generates pascal numbers within method)
+     * @param t The t value [0, 1]
+     * @return Returns the point that is represented by t
+     */
+    public Point getPoint(double t) {
+        return getPoint(getPascalNums(px.rows() - 1), t);
     }
 
     /**
@@ -230,7 +240,7 @@ public class BezierFit {
         int numInliers = 0;
 
         for(Point p : points) {
-            double dist = getMinDistance(p, 1e-6);
+            double dist = getMinDistance(p, 1e-6)[0];
 
             if(dist <= distThreshold)
                 numInliers++;
@@ -243,7 +253,7 @@ public class BezierFit {
         int[] pascal = getPascalNums(degrees);
 
         for(Point p : points) {
-            Point pCurve = getPoint(pascal, getMinDistance(p, 1e-3));
+            Point pCurve = getPoint(pascal, getMinDistance(p, 1e-3)[0]);
 
             Scalar color = null;
             if(Math.sqrt(squareDist(p, pCurve)) <= 10)
@@ -259,9 +269,9 @@ public class BezierFit {
      * Gets the minimum distance from a point to the curve
      * @param p Point off the curve
      * @param epsilon Threshold for how precise t should be
-     *
+     * @return Returns a double[] for the min distance and minT ([minDist, minT])
      */
-    protected double getMinDistance(Point p, double epsilon) {
+    public double[] getMinDistance(Point p, double epsilon) {
         double minT = 0;
         double minDist = Double.POSITIVE_INFINITY;
 
@@ -290,15 +300,17 @@ public class BezierFit {
             double sdp = squareDist(p, midPlus);
             double sdm = squareDist(p, midMinus);
 //            System.out.println((sdp < sdm) + " " + sdp + " " + sdm);
-            if(sdp < sdm)
+            if (sdp < sdm) {
                 minBound = mid;
-            else
+                minDist = sdp;
+            } else {
                 maxBound = mid;
+                minDist = sdm;
+            }
         }
 
         // TODO CHANGE TO Math.sqrt(minDist)
-//        return minT; // uncomment if using visualizeMinDist
-        return Math.sqrt(minDist);
+        return new double[] {Math.sqrt(minDist), minT};
     }
 
     /**

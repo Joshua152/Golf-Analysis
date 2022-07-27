@@ -6,6 +6,7 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.xfeatures2d.SURF;
 import util.BezierFit;
+import data.TimedPoint;
 
 import java.util.*;
 
@@ -16,17 +17,22 @@ public class SwingAnalysis {
     private double[] clubLine;
     private Point referencePoint;
 
-    private ArrayList<Point> points;
-    private ArrayList<Point> backswingPoints;
-    private ArrayList<Point> downswingPoints;
+    private ArrayList<TimedPoint> points;
+    private ArrayList<TimedPoint> backswingPoints;
+    private ArrayList<TimedPoint> downswingPoints;
 
     private Point downswingPoint;
     private int downswingFrame;
     private int downswingFrameY;
+    private int downswingFrameX;
 
-    private ArrayList<Integer> keyPointBasedTime; // just replace with int for keyPointBasedPoints frame # offset?
-    private ArrayList<Point> keyPointBasedPoints;
+//    private ArrayList<Integer> keyPointBasedTime; // just replace with int for keyPointBasedPoints frame # offset?
+//    private ArrayList<Point> keyPointBasedPoints;
+
+    private ArrayList<TimedPoint> medianPoints;
+    private ArrayList<TimedPoint> medianPointsDownswing;
     private ArrayList<Double> blurredY;
+    private ArrayList<Double> blurredX;
 
     private int frame;
 
@@ -39,15 +45,19 @@ public class SwingAnalysis {
         clubLine = new double[4];
         referencePoint = null;
 
-        points = new ArrayList<Point>();
-        backswingPoints = new ArrayList<Point>();
-        downswingPoints = new ArrayList<Point>();
+        points = new ArrayList<TimedPoint>();
+        backswingPoints = new ArrayList<TimedPoint>();
+        downswingPoints = new ArrayList<TimedPoint>();
 
         downswingFrame = 0;
         downswingFrameY = 0;
-        keyPointBasedTime = new ArrayList<Integer>();
-        keyPointBasedPoints = new ArrayList<Point>();
+        downswingFrameX = 0;
+//        keyPointBasedTime = new ArrayList<Integer>();
+//        keyPointBasedPoints = new ArrayList<Point>();
+        medianPoints = new ArrayList<TimedPoint>();
+        medianPointsDownswing = new ArrayList<TimedPoint>();
         blurredY = new ArrayList<Double>();
+        blurredX = new ArrayList<Double>();
 
         frame = 0;
     }
@@ -61,12 +71,15 @@ public class SwingAnalysis {
         VideoCapture capture = new VideoCapture("src/res/tigerdriver.mp4");
         double fps = 120;//capture.get(Videoio.CAP_PROP_FPS);
 
+//        capture.set(Videoio.CAP_PROP_POS_FRAMES, 381);
+
         Mat prev = new Mat();
         Mat curr = new Mat();
 
         Mat[] processedBuffer = new Mat[2];
         Mat tracer = new Mat();
         Mat yGraph = new Mat();
+        Mat xGraph = new Mat();
 
         Mat swingtracer = Imgcodecs.imread("tracer.jpg");
 
@@ -89,27 +102,41 @@ public class SwingAnalysis {
                     System.out.println("line: " + points[i - 1] + " -> " + points[i]);
                 }
 
-                for(Point p : downswingPoints) {
-                    System.out.println("new Point(" + p.x + ", " + p.y + "), ");
+                for(TimedPoint p : downswingPoints) {
+                    System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
+                }
+
+                System.out.println("Median points downswing:");
+                for(TimedPoint p : medianPointsDownswing) {
+                    System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
                 }
 
                 yGraph = new Mat(curr.rows(), blurredY.size(), CvType.CV_8UC3);
                 for(int i = 0; i < blurredY.size(); i++)
                     Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
 
-                Imgproc.circle(yGraph, new Point(downswingFrame - keyPointBasedTime.get(0), downswingFrameY), 5, new Scalar(255, 255, 255), -1);
+                xGraph = new Mat(curr.rows(), blurredX.size(), CvType.CV_8UC3);
+                for(int i = 0; i < blurredX.size(); i++)
+                    Imgproc.circle(xGraph, new Point(i, blurredX.get(i)), 3, new Scalar(255, 70, 255), -1);
+
+                Imgproc.circle(yGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameY), 5, new Scalar(255, 255, 255), -1);
                 Imgproc.line(tracer, new Point(0, downswingFrameY), new Point(curr.cols() - 1, downswingFrameY), new Scalar(0, 255, 0));
                 Imgproc.putText(yGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
                 Imgproc.putText(yGraph, blurredY.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
                 HighGui.imshow("YGraph", yGraph);
 
+                Imgproc.circle(xGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameX), 5, new Scalar(255, 255, 255), -1);
+                Imgproc.putText(xGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                Imgproc.putText(xGraph, blurredX.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                HighGui.imshow("XGraph", xGraph);
+
                 Imgproc.circle(tracer, downswingPoint, 3, new Scalar(255, 70, 255), -1);
 
                 segmentation = Mat.zeros(curr.size(), CvType.CV_8UC3);
-                for(Point p : backswingPoints)
+                for(TimedPoint p : backswingPoints)
                     Imgproc.circle(segmentation, p, 3, new Scalar(255, 0, 0), -1);
 
-                for(Point p : downswingPoints)
+                for(TimedPoint p : downswingPoints)
                     Imgproc.circle(segmentation, p, 3, new Scalar(100, 255, 255), -1);
             }
 
@@ -118,6 +145,7 @@ public class SwingAnalysis {
             if(frame >= 515) {
                 HighGui.imshow("Tracer", tracer);
                 HighGui.imshow("YGraph", yGraph);
+                HighGui.imshow("XGraph", xGraph);
                 HighGui.imshow("Segmentation", segmentation);
             }
 
@@ -304,7 +332,7 @@ public class SwingAnalysis {
         // filter matches
 
         // Only use points within 1 standard deviatino of the median
-        ArrayList<Point> filteredPoints = new ArrayList<Point>();
+        ArrayList<TimedPoint> filteredPoints = new ArrayList<TimedPoint>();
 
         if(clubLine != null) {
             for (DMatch m : matches.toArray()) {
@@ -336,7 +364,7 @@ public class SwingAnalysis {
 //                        Imgproc.line(trackingLines, p1, p2, new Scalar(255, 0, 0), 1);
 
 //                        trackPoints.add(p1);
-                        filteredPoints.add(p1);
+                        filteredPoints.add(new TimedPoint(frame, p1));
 //                        writer.write("[" + p1.x + ", " + p1.y + "],\n");
                     }
 //                    else
@@ -345,21 +373,24 @@ public class SwingAnalysis {
             }
 
             if(filteredPoints.size() != 0) {
-                Point[] withinMedian = withinMedian(filteredPoints, 5);
+                TimedPoint[] withinMedian = withinMedian(filteredPoints, 5);
                 points.addAll(Arrays.asList(withinMedian));
                 System.out.println("within median: " + withinMedian.length);
 
-                for(Point p : withinMedian) {
+                for(TimedPoint p : withinMedian) {
                     Imgproc.circle(trackingLines, p, 3, new Scalar(255, 0, 0), -1);
                 }
 
-                Point mid = withinMedian[withinMedian.length / 2];
-                keyPointBasedTime.add(frame);
-                keyPointBasedPoints.add(mid);
+                TimedPoint mid = withinMedian[withinMedian.length / 2];
+//                keyPointBasedTime.add(frame);
+//                keyPointBasedPoints.add(mid);
+                medianPoints.add(new TimedPoint(frame, mid));
             }
-        } else if(keyPointBasedTime.size() != 0) {
-            keyPointBasedTime.add(frame);
-            keyPointBasedPoints.add(keyPointBasedPoints.get(keyPointBasedPoints.size() - 1));
+        } else if(medianPoints.size() != 0) {
+//            keyPointBasedTime.add(frame);
+//            keyPointBasedPoints.add(keyPointBasedPoints.get(keyPointBasedPoints.size() - 1));
+
+            medianPoints.add(new TimedPoint(frame, medianPoints.get(medianPoints.size() - 1)));
         }
 
         Mat out = new Mat();
@@ -377,77 +408,99 @@ public class SwingAnalysis {
 
     private void postprocess() {
         // plot y values in array in accordance to time and blur
-        for(Point p : keyPointBasedPoints)
-            blurredY.add(p.y);
-
-        for(int i = 0; i < 15; i++) {
-            Mat blurredYMat = new Mat(blurredY.size(), 1, CvType.CV_32F);
-
-            double[] yBuffer = new double[blurredY.size()];
-            for(int j = 0; j < yBuffer.length; j++)
-                yBuffer[j] = blurredY.get(j);
-
-            blurredYMat.put(0, 0, yBuffer);
-
-            Imgproc.GaussianBlur(blurredYMat, blurredYMat, new Size(1, 31), 0, 0);
-
-            for(int j = 0; j < blurredYMat.rows(); j++)
-                blurredY.set(j, blurredYMat.get(j, 0)[0]);
+        for(TimedPoint tp : medianPoints) {
+            blurredX.add(tp.x);
+            blurredY.add(tp.y);
         }
+
+        blur(blurredX, 31, 15);
+        blur(blurredY, 31, 15);
 
         for(int i = 3; i < blurredY.size() - 3; i++) {
             double curr = blurredY.get(i);
 
             if(blurredY.get(i - 2) < curr && blurredY.get(i - 1) < curr &&
                     blurredY.get(i + 1) < curr && blurredY.get(i + 2) < curr) {
-                downswingFrame = keyPointBasedTime.get(i);
+                downswingFrame = (int) medianPoints.get(i).frame;
                 downswingFrameY = (int) curr;
 
                 i = blurredY.size();
             }
         }
 
-        int downswingIndex = getInsertIndex(keyPointBasedTime, downswingFrame, 0, keyPointBasedTime.size() - 1);
-        if(downswingIndex != 0 && downswingIndex != keyPointBasedTime.size() &&
-                keyPointBasedTime.get(downswingIndex) - downswingFrame >= downswingFrame - keyPointBasedTime.get(downswingIndex - 1)) {
-            downswingIndex--;
+//        for(int i = 3; i < blurredX.size() - 3; i++) {
+//            double curr = blurredX.get(i);
+//
+//            if(blurredX.get(i - 2) < curr && blurredX.get(i - 1) < curr &&
+//                    blurredX.get(i + 1) < curr && blurredX.get(i + 2) < curr) {
+//                downswingFrame = keyPointBasedTime.get(i);
+//                downswingFrameX = (int) curr;
+//
+//                i = blurredX.size();
+//            }
+//        }
+
+
+//        int downswingIndex = getInsertIndex(frameBasedPoints, downswingFrame, 0, frameBasedPoints.size() - 1);
+//        if(downswingIndex != 0 && downswingIndex != frameBasedPoints.size() &&
+//                frameBasedPoints.get(downswingIndex).frame - downswingFrame >= downswingFrame - frameBasedPoints.get(downswingIndex - 1).frame) {
+//            downswingIndex--;
+//        }
+//
+//        downswingPoint = frameBasedPoints.get(downswingIndex).pos;
+//
+//        System.out.println("downswingIndex: " + downswingIndex);
+//        System.out.println("keyPointBasedPoints size: " + frameBasedPoints.size());
+//
+//        int trackPointsIndex = points.size() - 1;
+//        for(int i = frameBasedPoints.size() - 1; i >= downswingIndex; i--) {
+//            while(!(frameBasedPoints.get(i).pos).equals(points.get(trackPointsIndex).pos)) {
+//                downswingPoints.add(0, points.get(trackPointsIndex));
+//                System.out.println("add");
+//
+//                trackPointsIndex--;
+//            }
+//
+//            System.out.println("done: " + i);
+//
+//            downswingPoints.add(0, points.get(trackPointsIndex));
+//            trackPointsIndex--;
+//
+//            Point curr = frameBasedPoints.get(i).pos;
+//            while(i >= 0 && frameBasedPoints.get(i).equals(curr))
+//                i--;
+//
+//            i++;
+//        }
+//
+//        if(trackPointsIndex >= 0)
+//            downswingPoints.add(0, points.get(trackPointsIndex));
+//
+//        for(int i = 0; i < trackPointsIndex; i++)
+//            backswingPoints.add(points.get(i));
+
+        for(int i = 0; i < points.size(); i++) {
+            TimedPoint p = points.get(i);
+
+            if(p.frame < downswingFrame)
+                backswingPoints.add(p);
+            else
+                downswingPoints.add(p);
         }
 
-        downswingPoint = keyPointBasedPoints.get(downswingIndex);
+        downswingPoint = downswingPoints.get(0);
 
-        System.out.println("downswingIndex: " + downswingIndex);
-        System.out.println("keyPointBasedPoints size: " + keyPointBasedPoints.size());
-
-        int trackPointsIndex = points.size() - 1;
-        for(int i = keyPointBasedPoints.size() - 1; i >= downswingIndex; i--) {
-            while(!keyPointBasedPoints.get(i).equals(points.get(trackPointsIndex))) {
-                downswingPoints.add(0, points.get(trackPointsIndex));
-                System.out.println("add");
-
-                trackPointsIndex--;
-            }
-
-            System.out.println("done: " + i);
-
-            downswingPoints.add(0, points.get(trackPointsIndex));
-            trackPointsIndex--;
-
-            Point curr = keyPointBasedPoints.get(i);
-            while(keyPointBasedPoints.get(i).equals(curr))
-                i--;
-
-            i++;
-        }
-
-        downswingPoints.add(0, points.get(trackPointsIndex));
-
-        for(int i = 0; i < trackPointsIndex; i++)
-            backswingPoints.add(points.get(i));
-
-        // remove first 10% of downswing points b/c lots of noise
-        int n = (int) (downswingPoints.size() * 0.1);
+        // remove first 20% of downswing points b/c lots of noise
+        int n = (int) (downswingPoints.size() * 0.2);
         for(int i = 0; i < n; i++)
             downswingPoints.remove(0);
+
+        for(int i = 0; i < medianPoints.size(); i++) {
+            TimedPoint p = medianPoints.get(i);
+
+            if(p.frame >= downswingPoints.get(0).frame && p.frame <= downswingPoints.get(downswingPoints.size() - 1).frame)
+                medianPointsDownswing.add(p);
+        }
 
         int top = 0;
         int sideTop = 0;
@@ -455,7 +508,7 @@ public class SwingAnalysis {
         int bottom = 0;
 
         for(int i = 0; i < downswingPoints.size(); i++) {
-            Point p = downswingPoints.get(i);
+            TimedPoint p = downswingPoints.get(i);
             double angle = Math.atan2(referencePoint.y - p.y, p.x - referencePoint.x);
 
             if(inSection(angle, "top"))
@@ -481,7 +534,7 @@ public class SwingAnalysis {
         System.out.println("BOTTOM: " + bottom);
 
         for(int i = 0; i < downswingPoints.size(); i++) {
-            Point p = downswingPoints.get(i);
+            TimedPoint p = downswingPoints.get(i);
             double angle = Math.atan2(referencePoint.y - p.y, p.x - referencePoint.x);
 
             int currMultiplier = 1;
@@ -524,14 +577,14 @@ public class SwingAnalysis {
      * @param radius Allow points within this radius of the median (pixels)
      * @return Returns an array of the points
      */
-    private Point[] withinMedian(ArrayList<Point> points, int radius) {
+    private TimedPoint[] withinMedian(ArrayList<TimedPoint> points, int radius) {
         if(points.size() == 0)
             return null;
 
-        Point[] sorted = points.toArray(new Point[points.size()]);
+        TimedPoint[] sorted = points.toArray(new TimedPoint[points.size()]);
         Arrays.sort(sorted, (o1, o2) -> {
-            Point p1 = (Point) o1;
-            Point p2 = (Point) o2;
+            Point p1 = ((TimedPoint) o1);
+            Point p2 = ((TimedPoint) o2);
 
             if(p1.y < p2.y)
                 return -1;
@@ -542,11 +595,11 @@ public class SwingAnalysis {
             return 0;
         });
 
-        Point median = sorted[sorted.length / 2];
+        TimedPoint median = sorted[sorted.length / 2];
         int start = closestYIndex(sorted, median.y + radius, 0, sorted.length - 1);
         int end = closestYIndex(sorted, median.y - radius, start, sorted.length - 1);
 
-        Point[] within = new Point[end - start + 1];
+        TimedPoint[] within = new TimedPoint[end - start + 1];
         for(int i = start; i <= end; i++)
             within[i - start] = sorted[i];
 
@@ -561,7 +614,7 @@ public class SwingAnalysis {
      * @param end The upper bound index for the search
      * @return Returns the index of the closest y value of all the points in the array
      */
-    private int closestYIndex(Point[] points, double y, int start, int end) {
+    private int closestYIndex(TimedPoint[] points, double y, int start, int end) {
         while(start < end) {
             int mid = start + (end - start) / 2;
 
@@ -575,24 +628,47 @@ public class SwingAnalysis {
     }
 
     /**
-     * Returns where the given value should be inserted in the orderd list
+     * Returns where the given value should be inserted in the orderd list of TimedPoints in accordance to the time
      * @param list The orderd list
      * @param value The value to find the insertion index
      * @param start The lower bound for the search
      * @param end The upper bound for the search
      * @return Returns the given index where the value should be placed so that the list stays ordered
      */
-    private int getInsertIndex(ArrayList<Integer> list, double value, int start, int end) {
+    private int getInsertIndex(ArrayList<TimedPoint> list, double value, int start, int end) {
         while(start < end) {
             int mid = start + (end - start) / 2;
 
-            if(list.get(mid) <= value)
+            if(list.get(mid).frame <= value)
                 start = mid + 1;
             else
                 end = mid;
         }
 
         return start;
+    }
+
+    /**
+     * Blurs the values in an ArrayList
+     * @param values The values to blur
+     * @param kernelSize The size of the Gaussian blur kernel
+     * @param numTimes Number of times to run the blur
+     */
+    private void blur(ArrayList<Double> values, int kernelSize, int numTimes) {
+        for(int i = 0; i < numTimes; i++) {
+            Mat blurredMat = new Mat(values.size(), 1, CvType.CV_32F);
+
+            double[] buffer = new double[values.size()];
+            for(int j = 0; j < buffer.length; j++)
+                buffer[j] = values.get(j);
+
+            blurredMat.put(0, 0, buffer);
+
+            Imgproc.GaussianBlur(blurredMat, blurredMat, new Size(1, kernelSize), 0, 0);
+
+            for(int j = 0; j < blurredMat.rows(); j++)
+                values.set(j, blurredMat.get(j, 0)[0]);
+        }
     }
 
     /**
