@@ -7,6 +7,7 @@ import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 import util.BezierFit;
 import util.BezierRANSAC;
+import util.LUT;
 
 import java.io.*;
 import java.sql.Time;
@@ -362,7 +363,64 @@ public class BezierTest {
         HighGui.imshow("Median downswing", medianDown);
         HighGui.imshow("Median Downswing Graph", medianDownGraph);
 
+        showVid(fit, speedFit, medianDown, medianDownGraph);
+
         HighGui.waitKey(0);
+    }
+
+    private void showVid(BezierFit fit, BezierFit speedFit, Mat medianDown, Mat medianDownGraph) {
+        VideoCapture vid = new VideoCapture("src/res/tigerdriver.mp4");
+        int fps = 30;
+
+        int frameNum = 381;
+        vid.set(Videoio.CAP_PROP_POS_FRAMES, frameNum);
+
+        Mat out = Mat.zeros(new Size(790, 720), CvType.CV_8UC3);
+        Mat tracer = Mat.zeros(new Size(790, 720), CvType.CV_8UC3);
+
+        LUT lut = speedFit.createLUT(0.01);
+        Point prev = null;
+
+        int[] pascal = fit.getGlobalPascal();
+
+        boolean ok = vid.read(out);
+        while(ok) {
+            if(frameNum < 410) {
+                frameNum++;
+
+                continue;
+            }
+
+            if(frameNum > 515)
+                break;
+
+            double t = lut.get(frameNum);
+            Point curr = fit.getPoint(pascal, lut.get(frameNum));
+
+            if(prev != null && t >= 0 && t <= 1) {
+                System.out.println("LUT: " + frameNum + " -> " + t + " Line: " + prev + " -> " + curr);
+
+                Imgproc.line(tracer, prev, curr, new Scalar(100, 255, 100));
+            }
+
+            Mat animation = Mat.zeros(new Size(790, 720), CvType.CV_8UC3);
+            Core.addWeighted(out, 0.2, tracer, 0.8, 0, animation);
+
+            prev = curr;
+
+            HighGui.imshow("Median downswing", medianDown);
+            HighGui.imshow("Median Downswing Graph", medianDownGraph);
+            HighGui.imshow("Tracer only", tracer);
+            HighGui.imshow("Tracer", animation);
+
+            ok = vid.read(out);
+
+            frameNum++;
+
+            HighGui.waitKey(1000 / fps);
+        }
+
+        showVid(fit, speedFit, medianDown, medianDownGraph);
     }
 
     private void showVid(String file, double dt) {

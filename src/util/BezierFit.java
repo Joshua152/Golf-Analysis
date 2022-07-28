@@ -4,6 +4,7 @@ import data.TimedPoint;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -14,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.DoubleToLongFunction;
 
 // Following https://www.jimherold.com/computer-science/best-fit-bezier-curve
-public class BezierFit {
+public class BezierFit implements Serializable {
     public ArrayList<? extends Point> points;
     protected Mat x;
     protected Mat y;
@@ -160,7 +161,7 @@ public class BezierFit {
     public Point[] getPoints(double dt) {
         Point[] points = new Point[(int) (1 / dt)];
 
-        int[] pascal = getPascalNums(px.rows() - 1);
+        int[] pascal = getGlobalPascal();
 
 //        for(double t = 0; t < 1; t += dt) {
 //            points[(int) ((t / dt) + 0.000001)] = getPoint(pascal, t);
@@ -184,7 +185,7 @@ public class BezierFit {
      * @return Returns the point that is represented by t
      */
     public Point getPoint(double t) {
-        return getPoint(getPascalNums(px.rows() - 1), t);
+        return getPoint(getGlobalPascal(), t);
     }
 
     /**
@@ -192,7 +193,7 @@ public class BezierFit {
      * @param pascal The Pascal coefficients (row on pascal's triangle is num control points - 1)
      * @param t Normalized time index of point
      */
-    protected Point getPoint(int[] pascal, double t) {
+    public Point getPoint(int[] pascal, double t) {
         double xVal = 0;
         double yVal = 0;
 
@@ -209,26 +210,23 @@ public class BezierFit {
     }
 
     /**
-     * Gets numbers from a given row of Pascal's triangle (using combinatorics)
-     * @param row Rows are 0 indexed
-     * @return Returns int[] of nums from the given row of Pascal's triangle
+     * Creates a lookup table to allow the curve as a function interms of x
+     * @param dt Spacing for the concrete values in the LUT
+     * @return Returns a LUT that represents the Bezier curve
      */
-    protected int[] getPascalNums(int row) {
-        int[] nums = new int[row + 1];
+    public LUT createLUT(double dt) {
+        Point[] points = new Point[(int) ((1 / dt) + 0.5)];
 
-        int prev = 1;
+        int[] pascal = getGlobalPascal();
 
-        nums[0] = prev;
+        double t = 0;
+        for(int i = 0; i < points.length; i++) {
+            points[i] = getPoint(pascal, t);
 
-        for(int i = 1; i <= row; i++) {
-            int curr = (prev * (row - i + 1)) / i;
-
-            nums[i] = curr;
-
-            prev = curr;
+            t += dt;
         }
 
-        return nums;
+        return new LUT(points);
     }
 
     /**
@@ -311,6 +309,37 @@ public class BezierFit {
 
         // TODO CHANGE TO Math.sqrt(minDist)
         return new double[] {Math.sqrt(minDist), minT};
+    }
+
+    /**
+     * Gets pascal for the degrees of the Bezier curve
+     * @return Returns an int[] for the pascal numbers
+     */
+    public int[] getGlobalPascal() {
+        return getPascalNums(px.rows() - 1);
+    }
+
+    /**
+     * Gets numbers from a given row of Pascal's triangle (using combinatorics)
+     * @param row Rows are 0 indexed
+     * @return Returns int[] of nums from the given row of Pascal's triangle
+     */
+    protected int[] getPascalNums(int row) {
+        int[] nums = new int[row + 1];
+
+        int prev = 1;
+
+        nums[0] = prev;
+
+        for(int i = 1; i <= row; i++) {
+            int curr = (prev * (row - i + 1)) / i;
+
+            nums[i] = curr;
+
+            prev = curr;
+        }
+
+        return nums;
     }
 
     /**
