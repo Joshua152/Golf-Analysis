@@ -8,8 +8,10 @@ import org.opencv.videoio.Videoio;
 import util.BezierFit;
 import util.BezierRANSAC;
 import util.LUT;
+import util.Serialize;
 
 import java.io.*;
+import java.sql.Array;
 import java.sql.Time;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -225,6 +227,28 @@ public class BezierTest {
         BezierTest test = new BezierTest(tiger);
         test.run(medianPointsDownswing);
 //        test.showVid("fit.txt", 0.01);
+
+//        BezierFit fit = (BezierFit) Serialize.deserialize("fit.txt");
+//        BezierFit speedFit = (BezierFit) Serialize.deserialize("speedfit.txt");
+//        Mat medianDown = (Mat) Serialize.deserialize("mediandown.txt");
+//        Mat medianDownGraph = (Mat) Serialize.deserialize("mediandowngraph.txt");
+
+//        test.showVid(fit, speedFit, medianDown, medianDownGraph);
+//        test.filterPoints(medianPointsDownswing);
+    }
+
+    private void filterPoints(ArrayList<TimedPoint> medianPointsDownswing) {
+        ArrayList<TimedPoint> filtered = new ArrayList<TimedPoint>();
+
+        if(medianPointsDownswing.size() > 0)
+            filtered.add(medianPointsDownswing.get(0));
+
+        for(int i = 1; i < medianPointsDownswing.size(); i++) {
+            if(!((Point) medianPointsDownswing.get(i)).equals((Point) medianPointsDownswing.get(i - 1)))
+                filtered.add(medianPointsDownswing.get(i));
+        }
+
+        System.out.println(filtered);
     }
 
     public void run(ArrayList<TimedPoint> medianPointsDownswing) {
@@ -315,9 +339,11 @@ public class BezierTest {
             filtered.add(medianDownswing.get(0));
 
         for(int i = 1; i < medianDownswing.size(); i++) {
-            if(!filtered.get(filtered.size() - 1).equals((Point) medianDownswing.get(i)) && fit.getMinDistance(medianDownswing.get(i), 1e6)[0] < 10)
+            if(!((Point) medianDownswing.get(i)).equals((Point) medianDownswing.get(i - 1)))
                 filtered.add(medianDownswing.get(i));
         }
+
+        System.out.println("Median Downswing Filtered: " + filtered);
 
         for(int i = 0; i < filtered.size(); i++) {
             TimedPoint p = filtered.get(i);
@@ -363,12 +389,19 @@ public class BezierTest {
         HighGui.imshow("Median downswing", medianDown);
         HighGui.imshow("Median Downswing Graph", medianDownGraph);
 
+//        Serialize.serialize(fit, "fit.txt");
+//        Serialize.serialize(speedFit, "speedfit.txt");
+//        Serialize.serialize(medianDown, "mediandown.txt");
+//        Serialize.serialize(medianDownGraph, "mediandowngraph.txt");
+
         showVid(fit, speedFit, medianDown, medianDownGraph);
 
         HighGui.waitKey(0);
     }
 
     private void showVid(BezierFit fit, BezierFit speedFit, Mat medianDown, Mat medianDownGraph) {
+        // frame number and x out of sync
+
         VideoCapture vid = new VideoCapture("src/res/tigerdriver.mp4");
         int fps = 30;
 
@@ -385,7 +418,12 @@ public class BezierTest {
 
         boolean ok = vid.read(out);
         while(ok) {
+            System.out.println("Frame: " + vid.get(Videoio.CAP_PROP_POS_FRAMES));
+
+//            frameNum = (int) vid.get(Videoio.CAP_PROP_POS_FRAMES);
+
             if(frameNum < 410) {
+                ok = vid.read(out);
                 frameNum++;
 
                 continue;
@@ -414,7 +452,6 @@ public class BezierTest {
             HighGui.imshow("Tracer", animation);
 
             ok = vid.read(out);
-
             frameNum++;
 
             HighGui.waitKey(1000 / fps);
