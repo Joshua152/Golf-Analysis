@@ -270,13 +270,13 @@ public class BezierTest {
             Scalar color = new Scalar(255, 255, 255);
 
             double angle = Math.atan2(442 - p.y, p.x - 377);
-            if(SwingAnalysis.inSection(angle, "top"))
+            if(KeypointTracking.inSection(angle, "top"))
                 color = new Scalar(255, 0, 0);
-            else if(SwingAnalysis.inSection(angle, "side-top"))
+            else if(KeypointTracking.inSection(angle, "side-top"))
                 color = new Scalar(0, 255, 100);
-            else if(SwingAnalysis.inSection(angle, "side-bottom"))
+            else if(KeypointTracking.inSection(angle, "side-bottom"))
                 color = new Scalar(0, 100, 255);
-            else if(SwingAnalysis.inSection(angle, "bottom"))
+            else if(KeypointTracking.inSection(angle, "bottom"))
                 color = new Scalar(100, 100, 255);
 
             Imgproc.circle(mat, p, 3, color, -1);

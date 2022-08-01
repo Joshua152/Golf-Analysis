@@ -4,7 +4,6 @@ import data.TimedPoint;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 
-import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -15,7 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.DoubleToLongFunction;
 
 // Following https://www.jimherold.com/computer-science/best-fit-bezier-curve
-public class BezierFit implements Serializable {
+public class BezierFit {
     public ArrayList<? extends Point> points;
     protected Mat x;
     protected Mat y;
@@ -110,7 +109,7 @@ public class BezierFit implements Serializable {
         py = coeff.matMul(y);
     }
 
-    public static BezierFit RANSAC(ArrayList<Point> points, int degrees, int s, int t, int n) {
+    public static BezierFit RANSAC(ArrayList<? extends Point> points, int degrees, int s, int t, int n) {
         int numDone = 0;
         int maxInliers = 0;
         BezierFit best = null;

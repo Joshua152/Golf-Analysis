@@ -1,179 +1,181 @@
+import data.TimedPoint;
 import org.opencv.core.*;
-import org.opencv.features2d.*;
+import org.opencv.features2d.BFMatcher;
+import org.opencv.features2d.Features2d;
 import org.opencv.highgui.HighGui;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
+import org.opencv.videoio.Videoio;
 import org.opencv.xfeatures2d.SURF;
 import util.BezierFit;
-import data.TimedPoint;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 
-public class SwingAnalysis {
+/**
+ * Class for getting keypoint tracking from the given video.
+ */
+public class KeypointTracking {
+    public static int FLAG_DISPLAY_INFO = 1 << 0;
 
-    // TODo: SPACING WAS THE CULPRIT
-    private Mat trackingLines;
-    private double[] clubLine;
-    private Point referencePoint;
+    private int flags;
+
+    private String fileName;
 
     private ArrayList<TimedPoint> points;
     private ArrayList<TimedPoint> backswingPoints;
     private ArrayList<TimedPoint> downswingPoints;
-
-    private Point downswingPoint;
-    private int downswingFrame;
-    private int downswingFrameY;
-    private int downswingFrameX;
-
-//    private ArrayList<Integer> keyPointBasedTime; // just replace with int for keyPointBasedPoints frame # offset?
-//    private ArrayList<Point> keyPointBasedPoints;
 
     private ArrayList<TimedPoint> medianPoints;
     private ArrayList<TimedPoint> medianPointsDownswing;
     private ArrayList<Double> blurredY;
     private ArrayList<Double> blurredX;
 
+    private Point downswingPoint;
+    private int downswingFrame;
+    private int downswingFrameYVal;
+    private int downswingFrameXVal;
+
+    private Mat trackingLines;
+    private Point referencePoint;
+    private double[] clubLine;
+
     private int frame;
+    private int endFrame;
 
     static {
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
     }
 
-    public SwingAnalysis() {
-        trackingLines = new Mat();
-        clubLine = new double[4];
-        referencePoint = null;
+    public KeypointTracking(String fileName, int startFrame, int endFrame, int flags) {
+        this.flags = flags;
+
+        this.fileName = fileName;
 
         points = new ArrayList<TimedPoint>();
         backswingPoints = new ArrayList<TimedPoint>();
         downswingPoints = new ArrayList<TimedPoint>();
 
-        downswingFrame = 0;
-        downswingFrameY = 0;
-        downswingFrameX = 0;
-//        keyPointBasedTime = new ArrayList<Integer>();
-//        keyPointBasedPoints = new ArrayList<Point>();
         medianPoints = new ArrayList<TimedPoint>();
         medianPointsDownswing = new ArrayList<TimedPoint>();
         blurredY = new ArrayList<Double>();
         blurredX = new ArrayList<Double>();
 
-        frame = 0;
+        downswingPoint = null;
+        downswingFrame = 0;
+        downswingFrameYVal = 0;
+        downswingFrameXVal = 0;
+
+        trackingLines = new Mat();
+        referencePoint = null;
+        clubLine = new double[4];
+
+        frame = startFrame;
+        this.endFrame = endFrame;
+
+        findKeyPoints();
     }
 
-    public static void main(String[] args) {
-        SwingAnalysis swingAnalysis = new SwingAnalysis();
-        swingAnalysis.run();
-    }
+    /**
+     * Finds the KeyPoints in the video and puts them in the ArrayLists
+     */
+    private void findKeyPoints() {
+        VideoCapture capture = new VideoCapture(fileName);
+        int fps = 120;//(int) capture.get(Videoio.CAP_PROP_FPS);
 
-    private void run() {
-        VideoCapture capture = new VideoCapture("src/res/tigerdriver.mp4");
-        double fps = 120;//capture.get(Videoio.CAP_PROP_FPS);
-
-//        capture.set(Videoio.CAP_PROP_POS_FRAMES, 381);
+        capture.set(Videoio.CAP_PROP_POS_FRAMES, frame);
 
         Mat prev = new Mat();
         Mat curr = new Mat();
-
         Mat[] processedBuffer = new Mat[2];
-        Mat tracer = new Mat();
+
+        // display info
         Mat yGraph = new Mat();
         Mat xGraph = new Mat();
-
-        Mat swingtracer = Imgcodecs.imread("tracer.jpg");
-
         Mat segmentation = new Mat();
 
-        while(true) {
-            boolean ok = capture.read(curr);
+        boolean ok = capture.read(curr);
 
+        trackingLines = new Mat(curr.size(), curr.type());
+
+        while(ok && frame < endFrame) {
             frame++;
 
-            if(frame == 515) {
+            System.out.println("Frame: " + frame);
+
+            if(frame == endFrame) {
                 postprocess();
 
-                BezierFit fit = new BezierFit(points,  10);
-                Point[] points = fit.getPoints(0.1);
+                if(flag(FLAG_DISPLAY_INFO)) {
+                    for(TimedPoint p : downswingPoints) {
+                        System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
+                    }
 
-                tracer = trackingLines.clone();
-                for(int i = 1; i < points.length; i++) {
-                    Imgproc.line(tracer, points[i - 1], points[i], new Scalar(0, 255, 0));
-                    System.out.println("line: " + points[i - 1] + " -> " + points[i]);
+                    System.out.println("Median points downswing:");
+                    for(TimedPoint p : medianPointsDownswing) {
+                        System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
+                    }
+
+                    yGraph = Mat.zeros(curr.rows(), blurredY.size(), CvType.CV_8UC3);
+                    for(int i = 0; i < blurredY.size(); i++)
+                        Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
+
+                    xGraph = Mat.zeros(curr.rows(), blurredX.size(), CvType.CV_8UC3);
+                    for(int i = 0; i < blurredX.size(); i++)
+                        Imgproc.circle(xGraph, new Point(i, blurredX.get(i)), 3, new Scalar(255, 70, 255), -1);
+
+                    Imgproc.circle(yGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameYVal), 5, new Scalar(255, 255, 255), -1);
+                    Imgproc.line(trackingLines, new Point(0, downswingFrameYVal), new Point(curr.cols() - 1, downswingFrameYVal), new Scalar(0, 255, 0));
+                    Imgproc.putText(yGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                    Imgproc.putText(yGraph, blurredY.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                    HighGui.imshow("YGraph", yGraph);
+
+                    Imgproc.circle(xGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameXVal), 5, new Scalar(255, 255, 255), -1);
+                    Imgproc.putText(xGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                    Imgproc.putText(xGraph, blurredX.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                    HighGui.imshow("XGraph", xGraph);
+
+                    Imgproc.circle(trackingLines, downswingPoint, 3, new Scalar(255, 70, 255), -1);
+
+                    segmentation = Mat.zeros(curr.size(), CvType.CV_8UC3);
+                    for(TimedPoint p : backswingPoints)
+                        Imgproc.circle(segmentation, p, 3, new Scalar(255, 0, 0), -1);
+
+                    for(TimedPoint p : downswingPoints)
+                        Imgproc.circle(segmentation, p, 3, new Scalar(100, 255, 255), -1);
                 }
-
-                for(TimedPoint p : downswingPoints) {
-                    System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
-                }
-
-                System.out.println("Median points downswing:");
-                for(TimedPoint p : medianPointsDownswing) {
-                    System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
-                }
-
-                yGraph = new Mat(curr.rows(), blurredY.size(), CvType.CV_8UC3);
-                for(int i = 0; i < blurredY.size(); i++)
-                    Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
-
-                xGraph = new Mat(curr.rows(), blurredX.size(), CvType.CV_8UC3);
-                for(int i = 0; i < blurredX.size(); i++)
-                    Imgproc.circle(xGraph, new Point(i, blurredX.get(i)), 3, new Scalar(255, 70, 255), -1);
-
-                Imgproc.circle(yGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameY), 5, new Scalar(255, 255, 255), -1);
-                Imgproc.line(tracer, new Point(0, downswingFrameY), new Point(curr.cols() - 1, downswingFrameY), new Scalar(0, 255, 0));
-                Imgproc.putText(yGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                Imgproc.putText(yGraph, blurredY.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                HighGui.imshow("YGraph", yGraph);
-
-                Imgproc.circle(xGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameX), 5, new Scalar(255, 255, 255), -1);
-                Imgproc.putText(xGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                Imgproc.putText(xGraph, blurredX.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                HighGui.imshow("XGraph", xGraph);
-
-                Imgproc.circle(tracer, downswingPoint, 3, new Scalar(255, 70, 255), -1);
-
-                segmentation = Mat.zeros(curr.size(), CvType.CV_8UC3);
-                for(TimedPoint p : backswingPoints)
-                    Imgproc.circle(segmentation, p, 3, new Scalar(255, 0, 0), -1);
-
-                for(TimedPoint p : downswingPoints)
-                    Imgproc.circle(segmentation, p, 3, new Scalar(100, 255, 255), -1);
             }
-
-            System.out.println("frame: " + frame);
-
-            if(frame >= 515) {
-                HighGui.imshow("Tracer", tracer);
-                HighGui.imshow("YGraph", yGraph);
-                HighGui.imshow("XGraph", xGraph);
-                HighGui.imshow("Segmentation", segmentation);
-            }
-
-            // STOP AT FRAME 515
-
-//            if(!ok)
-//                writer.close();
-
-            if(trackingLines.empty())
-                trackingLines = new Mat(curr.size(), curr.type());
 
             if(!prev.empty() && !curr.empty()) {
-               boolean full = handleBuffer(processedBuffer, curr, prev);
+                boolean bufferFull = handleBuffer(processedBuffer, curr, prev);
 
-               if(full) {
-                   Mat res = track(processedBuffer[1], processedBuffer[0], curr, prev);
+                if(bufferFull) {
+                    Mat trackInfo = track(processedBuffer[1], processedBuffer[0]);
 
-                   HighGui.imshow("Preprocess", preprocess(curr, prev));
-                   Core.add(res, swingtracer, res);
-                   HighGui.imshow("Track", res);
-               }
+                    if(flag(FLAG_DISPLAY_INFO)) {
+                        // move logic to separate function?
 
-               HighGui.waitKey((int) ((1 / fps) * 1000));
+                        HighGui.imshow("Preprocess", preprocess(curr, prev));
+                        HighGui.imshow("Track", trackInfo);
+
+                    }
+                }
+
+                HighGui.waitKey(1000 / fps);
             }
 
             prev = curr.clone();
+            ok = capture.read(curr);
+        }
 
-            System.out.println("REFERENCE POINT: " + referencePoint);
+        if(flag(FLAG_DISPLAY_INFO)) {
+            HighGui.imshow("Tracking Lines", trackingLines);
+            HighGui.imshow("YGraph", yGraph);
+            HighGui.imshow("XGraph", xGraph);
+            HighGui.imshow("Segmentation", segmentation);
+
+//            HighGui.waitKey(0);
         }
     }
 
@@ -201,48 +203,16 @@ public class SwingAnalysis {
 
         Imgproc.Canny(res.clone(), res, 80, 200);
 
-
         // TODO: WHAT?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?!?
         // probabilistic Hough line transform
         Mat lines = new Mat();
         Imgproc.HoughLinesP(res, lines, 1, Math.PI / 180, 80, 50, 30);
 
-//        System.out.println(lines.dump());
-
         Mat houghLinesDest = new Mat();
         Imgproc.cvtColor(res, houghLinesDest, Imgproc.COLOR_GRAY2BGR);
 
-//        Mat houghLinesFiltered = new Mat();
-//
-//        HashSet<Double> okSlopes = new HashSet<Double>();
-//
-//        for(int i = 0; i < lines.rows(); i++) {
-//            double[] l1 = lines.get(i, 0);
-//            double slope1 = (l1[3] - l1[1]) / (l1[2] - l1[0]);
-//
-//            if(okSlopes.contains(slope1))
-//                i++;
-//
-//            for(int j = 0; j < lines.rows(); j++) {
-//                double[] l2 = lines.get(j, 0);
-//                double slope2 = (l2[3] - l2[1]) / (l2[2] - l2[0]);
-//
-//                if(Math.min(slope1, slope2) / Math.max(slope1, slope2) <= 0.95) {
-//                    houghLinesFiltered.put(houghLinesFiltered.rows(), 0 , l1);
-//
-//                    okSlopes.add(slope1);
-//
-//                    j = lines.rows();
-//                }
-//            }
-//        }
-
-        // use median distance insteads of random?
-
         double[] l = null;
         double largest = 0;
-
-        System.out.println(lines.rows());
 
         for(int i = 0; i < lines.rows(); i++) {
             if(lines.get(i, 0).length == 0) {
@@ -278,35 +248,33 @@ public class SwingAnalysis {
                 referencePoint = new Point(clubLine[2], clubLine[3]);
         }
 
-        HighGui.imshow("Hough Lines", houghLinesDest);
+        if(flag(FLAG_DISPLAY_INFO))
+            HighGui.imshow("Hough Lines", houghLinesDest);
 
         Imgproc.cvtColor(res, res, Imgproc.COLOR_GRAY2BGR);
 
         return res;
     }
 
-    private Mat track(Mat curr, Mat prev, Mat currOriginal, Mat prevOriginal) {
-        // detect/describe keypoints
-//        ORB kpFinder = ORB.create();
+    private Mat track(Mat curr, Mat prev) {
+        // detect keypoints
+
         SURF kpFinder = SURF.create(1500, 8, 5, true, false);
-//        BriefDescriptorExtractor kpFinder = BriefDescriptorExtractor.create();
-//        StarDetector kpDetector =  StarDetector.create();
 
         MatOfKeyPoint currKP = new MatOfKeyPoint();
         Mat currDescriptors = new Mat();
-//        kpFinder.detectAndCompute(curr, new Mat(), currKP, currDescriptors);
+
         kpFinder.detect(curr, currKP);
         kpFinder.compute(curr, currKP, currDescriptors);
 
         MatOfKeyPoint prevKP = new MatOfKeyPoint();
         Mat prevDescriptors = new Mat();
-//        kpFinder.detectAndCompute(prev, new Mat(), prevKP, prevDescriptors);
+
         kpFinder.detect(prev, prevKP);
         kpFinder.compute(prev, prevKP, prevDescriptors);
 
         Mat key = new Mat();
         Features2d.drawKeypoints(curr, currKP, key, Scalar.all(-1), Features2d.DrawMatchesFlags_DRAW_RICH_KEYPOINTS);
-//        HighGui.imshow("KeyPoints", key);
 
         // match kepoints
 
@@ -318,20 +286,17 @@ public class SwingAnalysis {
             return out;
         }
 
-//        FlannBasedMatcher matcher = FlannBasedMatcher.create();
         BFMatcher matcher = BFMatcher.create(Core.NORM_L2, true);
 
         MatOfDMatch matches = new MatOfDMatch();
         matcher.match(currDescriptors, prevDescriptors, matches, new Mat()); // query, train
 
-//        System.out.println("club line: " + Arrays.toString(clubLine));
+        // filter matches
 
         KeyPoint[] currKPArray = currKP.toArray();
         KeyPoint[] prevKPArray = prevKP.toArray();
 
-        // filter matches
-
-        // Only use points within 1 standard deviatino of the median
+        // Only use points within 1 standard deviation of the median?
         ArrayList<TimedPoint> filteredPoints = new ArrayList<TimedPoint>();
 
         if(clubLine != null) {
@@ -339,7 +304,7 @@ public class SwingAnalysis {
                 Point p1 = currKPArray[m.queryIdx].pt;
                 Point p2 = prevKPArray[m.trainIdx].pt;
 
-                if (Math.abs(p1.x - p2.x) < 20 && Math.abs(p1.y - p2.y) < 20 &&
+                if(Math.abs(p1.x - p2.x) < 20 && Math.abs(p1.y - p2.y) < 20 &&
                         !(p1.x > Math.min(clubLine[0], clubLine[2]) && p1.x < Math.max(clubLine[0], clubLine[2]) &&
                                 p1.y > Math.min(clubLine[1], clubLine[3]) && p1.y < Math.max(clubLine[1], clubLine[3]))) {
 
@@ -360,36 +325,24 @@ public class SwingAnalysis {
                     double headDist = distance(p1, clubHead);
                     double gripDist = distance(p1, clubGrip);
 
-                    if (headDist < gripDist) {
-//                        Imgproc.line(trackingLines, p1, p2, new Scalar(255, 0, 0), 1);
-
-//                        trackPoints.add(p1);
+                    if(headDist < gripDist)
                         filteredPoints.add(new TimedPoint(frame, p1));
-//                        writer.write("[" + p1.x + ", " + p1.y + "],\n");
-                    }
-//                    else
-//                        Imgproc.line(trackingLines, p1, p2, new Scalar(0, 0, 100), 1);
                 }
             }
 
+            // further filters keypoints by only including those that lie within a certain
+            // distance from the median
             if(filteredPoints.size() != 0) {
                 TimedPoint[] withinMedian = withinMedian(filteredPoints, 5);
                 points.addAll(Arrays.asList(withinMedian));
-                System.out.println("within median: " + withinMedian.length);
 
-                for(TimedPoint p : withinMedian) {
+                for(TimedPoint p : withinMedian)
                     Imgproc.circle(trackingLines, p, 3, new Scalar(255, 0, 0), -1);
-                }
 
                 TimedPoint mid = withinMedian[withinMedian.length / 2];
-//                keyPointBasedTime.add(frame);
-//                keyPointBasedPoints.add(mid);
                 medianPoints.add(new TimedPoint(frame, mid));
             }
         } else if(medianPoints.size() != 0) {
-//            keyPointBasedTime.add(frame);
-//            keyPointBasedPoints.add(keyPointBasedPoints.get(keyPointBasedPoints.size() - 1));
-
             medianPoints.add(new TimedPoint(frame, medianPoints.get(medianPoints.size() - 1)));
         }
 
@@ -422,62 +375,23 @@ public class SwingAnalysis {
             if(blurredY.get(i - 2) < curr && blurredY.get(i - 1) < curr &&
                     blurredY.get(i + 1) < curr && blurredY.get(i + 2) < curr) {
                 downswingFrame = (int) medianPoints.get(i).frame;
-                downswingFrameY = (int) curr;
+                downswingFrameYVal = (int) curr;
 
                 i = blurredY.size();
             }
         }
 
-//        for(int i = 3; i < blurredX.size() - 3; i++) {
-//            double curr = blurredX.get(i);
-//
-//            if(blurredX.get(i - 2) < curr && blurredX.get(i - 1) < curr &&
-//                    blurredX.get(i + 1) < curr && blurredX.get(i + 2) < curr) {
+        for(int i = 3; i < blurredX.size() - 3; i++) {
+            double curr = blurredX.get(i);
+
+            if(blurredX.get(i - 2) < curr && blurredX.get(i - 1) < curr &&
+                    blurredX.get(i + 1) < curr && blurredX.get(i + 2) < curr) {
 //                downswingFrame = keyPointBasedTime.get(i);
-//                downswingFrameX = (int) curr;
-//
-//                i = blurredX.size();
-//            }
-//        }
+                downswingFrameXVal = (int) curr;
 
-
-//        int downswingIndex = getInsertIndex(frameBasedPoints, downswingFrame, 0, frameBasedPoints.size() - 1);
-//        if(downswingIndex != 0 && downswingIndex != frameBasedPoints.size() &&
-//                frameBasedPoints.get(downswingIndex).frame - downswingFrame >= downswingFrame - frameBasedPoints.get(downswingIndex - 1).frame) {
-//            downswingIndex--;
-//        }
-//
-//        downswingPoint = frameBasedPoints.get(downswingIndex).pos;
-//
-//        System.out.println("downswingIndex: " + downswingIndex);
-//        System.out.println("keyPointBasedPoints size: " + frameBasedPoints.size());
-//
-//        int trackPointsIndex = points.size() - 1;
-//        for(int i = frameBasedPoints.size() - 1; i >= downswingIndex; i--) {
-//            while(!(frameBasedPoints.get(i).pos).equals(points.get(trackPointsIndex).pos)) {
-//                downswingPoints.add(0, points.get(trackPointsIndex));
-//                System.out.println("add");
-//
-//                trackPointsIndex--;
-//            }
-//
-//            System.out.println("done: " + i);
-//
-//            downswingPoints.add(0, points.get(trackPointsIndex));
-//            trackPointsIndex--;
-//
-//            Point curr = frameBasedPoints.get(i).pos;
-//            while(i >= 0 && frameBasedPoints.get(i).equals(curr))
-//                i--;
-//
-//            i++;
-//        }
-//
-//        if(trackPointsIndex >= 0)
-//            downswingPoints.add(0, points.get(trackPointsIndex));
-//
-//        for(int i = 0; i < trackPointsIndex; i++)
-//            backswingPoints.add(points.get(i));
+                i = blurredX.size();
+            }
+        }
 
         for(int i = 0; i < points.size(); i++) {
             TimedPoint p = points.get(i);
@@ -525,13 +439,13 @@ public class SwingAnalysis {
         int sideBottomMultiplier = (int) ((top * 0.20) / sideBottom); // 25
         int bottomMultiplier = (int) ((top * 0.35) / bottom); // 0.3
 
-        System.out.println("MULTIPLIER (SIDE TOP): " + sideTopMultiplier);
-        System.out.println("MULTIPLIER (SIDE BOTTOM): " + sideBottomMultiplier);
-        System.out.println("MULTIPLIER (BOTTOM): " + bottomMultiplier);
-        System.out.println("TOP: " + top);
-        System.out.println("SIDE TOP: " + sideTop);
-        System.out.println("SIDE BOTTOM: " + sideBottom);
-        System.out.println("BOTTOM: " + bottom);
+//        System.out.println("MULTIPLIER (SIDE TOP): " + sideTopMultiplier);
+//        System.out.println("MULTIPLIER (SIDE BOTTOM): " + sideBottomMultiplier);
+//        System.out.println("MULTIPLIER (BOTTOM): " + bottomMultiplier);
+//        System.out.println("TOP: " + top);
+//        System.out.println("SIDE TOP: " + sideTop);
+//        System.out.println("SIDE BOTTOM: " + sideBottom);
+//        System.out.println("BOTTOM: " + bottom);
 
         for(int i = 0; i < downswingPoints.size(); i++) {
             TimedPoint p = downswingPoints.get(i);
@@ -555,7 +469,34 @@ public class SwingAnalysis {
         }
     }
 
-    // returns if buffer is full
+    /**
+     * Returns a best fit Bezier curve for the downswing
+     * @return Returns a BezierFit representing the curve of best fit for the downswing
+     */
+    public BezierFit fit() {
+        BezierFit fit = BezierFit.RANSACRecursive(medianPointsDownswing, 5, 20, 10, (int) 1e5);
+
+        if(flag(FLAG_DISPLAY_INFO)) {
+            Mat tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
+
+            Point[] points = fit.getPoints(0.01);
+
+            for(int i = 1; i < points.length; i++)
+                Imgproc.line(tracer, points[i - 1], points[i], new Scalar(0, 255, 0));
+
+            HighGui.imshow("Tracer", tracer);
+        }
+
+        return fit;
+    }
+
+    /**
+     * Handles updating the Mats in the buffer
+     * @param processedBuffer The buffer
+     * @param curr The Mat from the current frame
+     * @param prev The Mat from the previous frame
+     * @return Returns whether or not the buffer is full
+     */
     private boolean handleBuffer(Mat[] processedBuffer, Mat curr, Mat prev) {
         processedBuffer[0] = processedBuffer[1];
         processedBuffer[1] = preprocess(curr, prev);
@@ -563,10 +504,21 @@ public class SwingAnalysis {
         return processedBuffer[0] != null;
     }
 
+    /**
+     * Finds the distance from one point to another
+     * @param p1 The first point
+     * @param p2 The second point
+     * @return The distance (px) from the first point to the second point
+     */
     private double distance(Point p1, Point p2) {
         return Math.sqrt((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y));
     }
 
+    /**
+     * Finds the length of a given line given the endpoints
+     * @param line The endpoints of the line in the form of [x1, y1, x2, y2]
+     * @return Returns the length of the line (px)
+     */
     private double length(double[] line) {
         return Math.sqrt((line[0] - line[2]) * (line[0] - line[2]) + (line[1] - line[3]) * (line[1] - line[3]));
     }
@@ -691,5 +643,14 @@ public class SwingAnalysis {
         }
 
         return false;
+    }
+
+    /**
+     * Checks to see if the flag has been set
+     * @param flag The flag constant
+     * @return Returns true if the flag was passed in
+     */
+    private boolean flag(int flag) {
+        return (flag & flags) == flag;
     }
 }
