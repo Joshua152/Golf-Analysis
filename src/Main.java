@@ -1,5 +1,5 @@
+import data.SwingFit;
 import org.opencv.highgui.HighGui;
-import util.BezierFit;
 
 public class Main {
     public static void main(String[] args) {
@@ -14,12 +14,17 @@ public class Main {
 
         long start = System.currentTimeMillis();
 
-        KeypointTracking tracking = new KeypointTracking("src/res/tigerdriver.mp4", 0, 515, KeypointTracking.FLAG_DISPLAY_INFO);
+        String filePath = "src/res/tigerdriver.mp4";
+
+        KeypointTracking tracking = new KeypointTracking(filePath, 0, 515, KeypointTracking.FLAG_DISPLAY_INFO);
         System.out.println("Fitting...");
-        BezierFit fit = tracking.fit();
+        SwingFit fit = tracking.fit();
         System.out.println("Fitting... Complete");
 
         System.out.println("Processing Time: " + ((System.currentTimeMillis() - start) / 1000.0));
+
+        for(int i = 0; i < 15; i++)
+            fit.showVid(filePath, tracking.getDownswingFrame(), 515);
 
         HighGui.waitKey(0);
     }

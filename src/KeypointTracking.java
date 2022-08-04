@@ -1,3 +1,4 @@
+import data.SwingFit;
 import data.TimedPoint;
 import org.opencv.core.*;
 import org.opencv.features2d.BFMatcher;
@@ -75,6 +76,71 @@ public class KeypointTracking {
         this.endFrame = endFrame;
 
         findKeyPoints();
+    }
+
+    /**
+     * Returns the best fit path and swing for the downswing
+     * @return Returns a SwingFit object that represents the Bezier curves for both the path and the speed
+     */
+    public SwingFit fit() {
+        BezierFit pathFit = fitPath();
+        BezierFit speedFit = fitSpeed(pathFit);
+
+        return new SwingFit(pathFit, speedFit);
+    }
+
+    /**
+     * Returns a best fit Bezier curve for the downswing
+     * @return Returns a BezierFit representing the curve of best fit for the path of the downswing
+     */
+    public BezierFit fitPath() {
+        BezierFit fit = BezierFit.RANSACRecursive(medianPointsDownswing, 5, 20, 10, (int) 1e5);
+
+        if(flag(FLAG_DISPLAY_INFO)) {
+            Mat tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
+
+            Point[] points = fit.getPoints(0.01);
+
+            for(Point p : downswingPoints)
+                Imgproc.circle(tracer, p, 3, new Scalar(255, 255, 255), -1);
+
+            for(int i = 1; i < points.length; i++)
+                Imgproc.line(tracer, points[i - 1], points[i], new Scalar(0, 255, 0));
+
+            HighGui.imshow("Tracer", tracer);
+        }
+
+        return fit;
+    }
+
+    /**
+     * Returns a best fit Bezer curve for the speed of the swing (x: frame, y: t [ 0,1])
+     * @param pathFit The BezierFit for the path of the downswing
+     * @return Returns a BezierFit representing the curve of best fit for speed of the downswing
+     */
+    public BezierFit fitSpeed(BezierFit pathFit) {
+        ArrayList<Point> rawFrameToT = new ArrayList<Point>(); // x: frame, y: t
+
+        ArrayList<TimedPoint> filtered = new ArrayList<TimedPoint>();
+
+        if(medianPointsDownswing.size() > 0)
+            filtered.add(medianPointsDownswing.get(0));
+
+        for(int i = 1; i < medianPointsDownswing.size(); i++) {
+            if(!((Point) medianPointsDownswing.get(i)).equals((Point) medianPointsDownswing.get(i - 1)))
+                filtered.add(medianPointsDownswing.get(i));
+        }
+
+        for(TimedPoint p : filtered) {
+            double[] min = pathFit.getMinDistance(p, 0.001);
+            double dist = min[0];
+            double t = min[1];
+
+            if (dist < 10)
+                rawFrameToT.add(new Point(p.frame, t));
+        }
+
+        return new BezierFit(rawFrameToT, 3);
     }
 
     /**
@@ -470,27 +536,6 @@ public class KeypointTracking {
     }
 
     /**
-     * Returns a best fit Bezier curve for the downswing
-     * @return Returns a BezierFit representing the curve of best fit for the downswing
-     */
-    public BezierFit fit() {
-        BezierFit fit = BezierFit.RANSACRecursive(medianPointsDownswing, 5, 20, 10, (int) 1e5);
-
-        if(flag(FLAG_DISPLAY_INFO)) {
-            Mat tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
-
-            Point[] points = fit.getPoints(0.01);
-
-            for(int i = 1; i < points.length; i++)
-                Imgproc.line(tracer, points[i - 1], points[i], new Scalar(0, 255, 0));
-
-            HighGui.imshow("Tracer", tracer);
-        }
-
-        return fit;
-    }
-
-    /**
      * Handles updating the Mats in the buffer
      * @param processedBuffer The buffer
      * @param curr The Mat from the current frame
@@ -652,5 +697,9 @@ public class KeypointTracking {
      */
     private boolean flag(int flag) {
         return (flag & flags) == flag;
+    }
+
+    public int getDownswingFrame() {
+        return downswingFrame;
     }
 }

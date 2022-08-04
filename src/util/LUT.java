@@ -52,4 +52,20 @@ public class LUT {
 
         return lower.y + percent * (upper.y - lower.y);
     }
+
+    /**
+     * Gets the lower bound for which calling get(x) on will work
+     * @return Returns the lower x bound from the points array
+     */
+    public double getLowerBound() {
+        return points[0].x;
+    }
+
+    /**
+     * Gets the upper bound for which calling get(x) on will work
+     * @return Returns the upper x bound from the points array
+     */
+    public double getUpperBound() {
+        return points[points.length - 1].x;
+    }
 }

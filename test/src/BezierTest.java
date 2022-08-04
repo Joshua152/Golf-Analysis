@@ -352,7 +352,7 @@ public class BezierTest {
             double dist = min[0];
             double t = min[1];
 
-            if (dist < 10) {
+            if(dist < 10) {
                 rawFrameToT.add(new Point(p.frame, t));
                 System.out.println("t: " + t);
             }
