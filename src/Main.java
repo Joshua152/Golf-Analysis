@@ -14,9 +14,9 @@ public class Main {
 
         long start = System.currentTimeMillis();
 
-        String filePath = "src/res/tigerdriver.mp4";
+        String filePath = "src/res/colliniron.mp4";
 
-        KeypointTracking tracking = new KeypointTracking(filePath, 0, 515, KeypointTracking.FLAG_DISPLAY_INFO);
+        KeypointTracking tracking = new KeypointTracking(filePath, 0, 585, KeypointTracking.FLAG_DISPLAY_INFO); // endFrame: 515 (tiger), 585 (collin)
         System.out.println("Fitting...");
         SwingFit fit = tracking.fit();
         System.out.println("Fitting... Complete");
@@ -24,7 +24,7 @@ public class Main {
         System.out.println("Processing Time: " + ((System.currentTimeMillis() - start) / 1000.0));
 
         for(int i = 0; i < 15; i++)
-            fit.showVid(filePath, tracking.getDownswingFrame(), 515);
+            fit.showVid(filePath, tracking.getDownswingFrame(), Integer.MAX_VALUE);
 
         HighGui.waitKey(0);
     }

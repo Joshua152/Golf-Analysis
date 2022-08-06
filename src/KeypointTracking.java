@@ -45,6 +45,8 @@ public class KeypointTracking {
     private int frame;
     private int endFrame;
 
+    private Mat tracer;
+
     static {
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
     }
@@ -75,6 +77,8 @@ public class KeypointTracking {
         frame = startFrame;
         this.endFrame = endFrame;
 
+        tracer = new Mat();
+
         findKeyPoints();
     }
 
@@ -97,7 +101,7 @@ public class KeypointTracking {
         BezierFit fit = BezierFit.RANSACRecursive(medianPointsDownswing, 5, 20, 10, (int) 1e5);
 
         if(flag(FLAG_DISPLAY_INFO)) {
-            Mat tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
+//            tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
 
             Point[] points = fit.getPoints(0.01);
 
@@ -107,7 +111,13 @@ public class KeypointTracking {
             for(int i = 1; i < points.length; i++)
                 Imgproc.line(tracer, points[i - 1], points[i], new Scalar(0, 255, 0));
 
+            Imgproc.circle(tracer, referencePoint, 3, new Scalar(0, 255, 255), 1);
+
             HighGui.imshow("Tracer", tracer);
+
+            System.out.println("Press any key to continue...");
+
+            HighGui.waitKey(0);
         }
 
         return fit;
@@ -174,14 +184,12 @@ public class KeypointTracking {
                 postprocess();
 
                 if(flag(FLAG_DISPLAY_INFO)) {
-                    for(TimedPoint p : downswingPoints) {
+                    for(TimedPoint p : downswingPoints)
                         System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
-                    }
 
                     System.out.println("Median points downswing:");
-                    for(TimedPoint p : medianPointsDownswing) {
+                    for(TimedPoint p : medianPointsDownswing)
                         System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
-                    }
 
                     yGraph = Mat.zeros(curr.rows(), blurredY.size(), CvType.CV_8UC3);
                     for(int i = 0; i < blurredY.size(); i++)
@@ -435,15 +443,36 @@ public class KeypointTracking {
         blur(blurredX, 31, 15);
         blur(blurredY, 31, 15);
 
-        for(int i = 3; i < blurredY.size() - 3; i++) {
-            double curr = blurredY.get(i);
+        // find min y val to find downswing frame
+//        for(int i = 3; i < blurredY.size() - 3; i++) {
+//            double curr = blurredY.get(i);
+//
+//            if(blurredY.get(i - 2) < curr && blurredY.get(i - 1) < curr &&
+//                    blurredY.get(i + 1) < curr && blurredY.get(i + 2) < curr) {
+//                downswingFrame = (int) medianPoints.get(i).frame;
+//                downswingFrameYVal = (int) curr;
+//
+//                i = blurredY.size();
+//            }
+//        }
 
-            if(blurredY.get(i - 2) < curr && blurredY.get(i - 1) < curr &&
-                    blurredY.get(i + 1) < curr && blurredY.get(i + 2) < curr) {
-                downswingFrame = (int) medianPoints.get(i).frame;
-                downswingFrameYVal = (int) curr;
+        // find point of inflection to find downswing frame
+        boolean check = false;
+        for(int i = 2; i < blurredY.size() - 1; i++) {
+            double prevV = blurredY.get(i - 1) - blurredY.get(i - 2);
+            double v = blurredY.get(i) - blurredY.get(i - 1);
+            double nextV = blurredY.get(i + 1) - blurredY.get(i);
 
-                i = blurredY.size();
+            if(v > 0)
+                check = true;
+
+            if(check) {
+                if(v - prevV <= 0 && nextV - v >= 0) {
+                    downswingFrame = (int) medianPoints.get(i).frame;
+                    downswingFrameYVal = (int) (double) blurredY.get(i);
+
+                    i = blurredY.size();
+                }
             }
         }
 
@@ -482,6 +511,43 @@ public class KeypointTracking {
                 medianPointsDownswing.add(p);
         }
 
+        // get rid of points in the middle that probably belong to the club
+        double maxY = referencePoint.y; // bottom most
+        double minY = referencePoint.y; // top most
+
+        double maxX = referencePoint.x; // right most
+        double minX = referencePoint.x; // left most
+
+        for(Point p : medianPointsDownswing) {
+            if(p.y > maxY)
+                maxY = p.y;
+
+            if(p.y < minY)
+                minY = p.y;
+
+            if(p.x > maxX)
+                maxX = p.x;
+
+            if(p.x < minX)
+                minX = p.x;
+        }
+
+        double radius = Math.min(maxY - minY, maxX - minX) / 2;
+        double radiusPercentage = 0.7;
+        Point center = new Point(referencePoint.x, minY + (maxY - minY) / 2);
+
+        for(int i = medianPointsDownswing.size() - 1; i >= 0; i--) {
+            double dist = distance(center, medianPointsDownswing.get(i));
+
+            if(dist < radiusPercentage * radius)
+                medianPointsDownswing.remove(i);
+        }
+
+        tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
+        Imgproc.circle(tracer, center, 3, new Scalar(41, 84, 97), 1);
+        Imgproc.circle(tracer, center, (int) (radiusPercentage * radius), new Scalar(41, 84, 97), 1);
+
+        // increase densities of sections
         int top = 0;
         int sideTop = 0;
         int sideBottom = 0;
@@ -503,7 +569,7 @@ public class KeypointTracking {
 
         int sideTopMultiplier = (int) ((top * 0.5) / sideTop); // 0.4
         int sideBottomMultiplier = (int) ((top * 0.20) / sideBottom); // 25
-        int bottomMultiplier = (int) ((top * 0.35) / bottom); // 0.3
+        int bottomMultiplier = (int) ((top * 0.4) / bottom); // 0.3
 
 //        System.out.println("MULTIPLIER (SIDE TOP): " + sideTopMultiplier);
 //        System.out.println("MULTIPLIER (SIDE BOTTOM): " + sideBottomMultiplier);
