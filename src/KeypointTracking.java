@@ -1,10 +1,10 @@
+import data.Circle;
 import data.SwingFit;
 import data.TimedPoint;
 import org.opencv.core.*;
 import org.opencv.features2d.BFMatcher;
 import org.opencv.features2d.Features2d;
 import org.opencv.highgui.HighGui;
-import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
@@ -42,6 +42,8 @@ public class KeypointTracking {
     private Point referencePoint;
     private double[] clubLine;
 
+    private Circle ball;
+
     private int frame;
     private int endFrame;
 
@@ -73,6 +75,8 @@ public class KeypointTracking {
         trackingLines = new Mat();
         referencePoint = null;
         clubLine = new double[4];
+
+        ball = null;
 
         frame = startFrame;
         this.endFrame = endFrame;
@@ -225,16 +229,21 @@ public class KeypointTracking {
                 boolean bufferFull = handleBuffer(processedBuffer, curr, prev);
 
                 if(bufferFull) {
-                    Mat trackInfo = track(processedBuffer[1], processedBuffer[0]);
+                    Mat trackInfo = trackClub(processedBuffer[1], processedBuffer[0]);
 
                     if(flag(FLAG_DISPLAY_INFO)) {
                         // move logic to separate function?
+                        if(ball != null)
+                            Imgproc.circle(trackInfo, ball.getCenter(), (int) ball.getRadius(), new Scalar(0, 100, 100), 1);
 
                         HighGui.imshow("Preprocess", preprocess(curr, prev));
                         HighGui.imshow("Track", trackInfo);
 
                     }
                 }
+
+                if(ball == null)
+                    findBall(curr);
 
                 HighGui.waitKey(1000 / fps);
             }
@@ -330,7 +339,7 @@ public class KeypointTracking {
         return res;
     }
 
-    private Mat track(Mat curr, Mat prev) {
+    private Mat trackClub(Mat curr, Mat prev) {
         // detect keypoints
 
         SURF kpFinder = SURF.create(1500, 8, 5, true, false);
@@ -431,6 +440,49 @@ public class KeypointTracking {
             Imgproc.circle(out, referencePoint, 5, new Scalar(255, 0, 255));
 
         return out;
+    }
+
+    /**
+     * Finds the ball using the Hough Circle Transform. Only looks for the ball below the reference point
+     * so, if the reference point is null, the ball will not be looked for.
+     * @param curr The current frame
+     */
+    private void findBall(Mat curr) {
+        if(referencePoint == null)
+            return;
+
+        Mat gray = new Mat();
+        Imgproc.cvtColor(curr, gray, Imgproc.COLOR_BGR2GRAY);
+
+        Imgproc.medianBlur(gray, gray, 5);
+
+        Mat circles = new Mat();
+        Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 1, (double) gray.rows() / 16, 300, 15,
+                1, 15);
+
+        ArrayList<Circle> guesses = new ArrayList<Circle>();
+        for(int i = 0; i < circles.cols(); i++) {
+            double[] c = circles.get(0, i);
+
+            Point center = new Point(Math.round(c[0]), Math.round(c[1]));
+            int radius = (int) Math.round(c[2]);
+
+            if(center.y > referencePoint.y)
+                guesses.add(new Circle(center, radius));
+        }
+
+        double minDist = Integer.MAX_VALUE;
+        Point firstClub = medianPoints.get(0);
+        for(Circle c : guesses) {
+            // find point closest to initial club keypoint
+            double dist = distance(firstClub, c.getCenter());
+
+            if(dist < minDist) {
+                ball = c;
+
+                minDist = dist;
+            }
+        }
     }
 
     private void postprocess() {
