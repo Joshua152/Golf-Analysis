@@ -19,10 +19,12 @@ public class LUT {
 
     /**
      * Uses the look up table to approximate y(x)
+     *
+     * SHOULD ONLY USE IF y(x) IS A FUNCTION
      * @param x The input
      * @return The approximate value of y
      */
-    public double get(double x) {
+    public double getY(double x) {
         System.out.println("x: " + x);
 
         if(x < points[0].x || x > points[points.length - 1].x)
@@ -51,6 +53,42 @@ public class LUT {
         double percent = (x - lower.x) / (upper.x - lower.x);
 
         return lower.y + percent * (upper.y - lower.y);
+    }
+
+    /**
+     * Uses the look up table to approximate x(y)
+     *
+     * SHOULD ONLY USE IF x(y) IS A FUNCTION
+     * @param y The input
+     * @return The approximate value of x
+     */
+    public double getX(double y) {
+        if(y < points[0].y || y > points[points.length - 1].y)
+            System.out.println("value y (" + y + ") out of bounds for [" + points[0].y + ", " + points[points.length - 1].y + "]");
+
+        int start = 0;
+        int end = points.length - 1;
+
+        while(start < end) {
+            int mid = start + (end - start) / 2;
+            Point p = points[mid];
+
+            if(p.y == y)
+                return points[mid].y;
+
+            if(p.y <= y)
+                start = mid + 1;
+            else
+                end = mid;
+        }
+
+        // LERP
+        Point upper = points[start];
+        Point lower = points[start - 1];
+
+        double percent = (y - lower.y) / (upper.y - lower.y);
+
+        return lower.x + percent * (upper.x - lower.x);
     }
 
     /**

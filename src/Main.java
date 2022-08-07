@@ -21,6 +21,8 @@ public class Main {
         SwingFit fit = tracking.fit();
         System.out.println("Fitting... Complete");
 
+        Analysis analysis = new Analysis(fit, tracking.getBall());
+
         System.out.println("Processing Time: " + ((System.currentTimeMillis() - start) / 1000.0));
 
         for(int i = 0; i < 15; i++)

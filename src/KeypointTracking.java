@@ -820,4 +820,8 @@ public class KeypointTracking {
     public int getDownswingFrame() {
         return downswingFrame;
     }
+
+    public Circle getBall() {
+        return ball;
+    }
 }

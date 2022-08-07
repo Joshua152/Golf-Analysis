@@ -12,9 +12,13 @@ public class SwingFit {
     private BezierFit pathFit;
     private BezierFit speedFit;
 
+    private LUT lut;
+
     public SwingFit(BezierFit pathFit, BezierFit speedFit) {
         this.pathFit = pathFit;
         this.speedFit = speedFit;
+
+        lut = speedFit.createLUT(0.01);
     }
 
     /**
@@ -37,7 +41,6 @@ public class SwingFit {
 
         tracer = Mat.zeros(vidCap.size(), CvType.CV_8UC3);
 
-        LUT lut = speedFit.createLUT(0.01);
         int[] pascal = pathFit.getGlobalPascal();
 
         Point prev = null;
@@ -46,7 +49,7 @@ public class SwingFit {
             Mat animation = Mat.zeros(vidCap.size(), CvType.CV_8UC3);
 
             if(frameNum >= lut.getLowerBound() && frameNum <= lut.getUpperBound()) {
-                double t = lut.get(frameNum);
+                double t = lut.getY(frameNum);
                 Point curr = pathFit.getPoint(pascal, t);
 
                 if(prev != null && t >= 0 && t <= 1)
@@ -74,5 +77,23 @@ public class SwingFit {
 
     public BezierFit getSpeedFit() {
         return speedFit;
+    }
+
+    /**
+     * Gets the pathFit t value from the given frame
+     * @param frame The frame to get the corresponding t value of
+     * @return The t value [0, 1] of the pathFit from the given frame
+     */
+    public double getPathT(double frame) {
+        return lut.getY(frame);
+    }
+
+    /**
+     * Gets the pathFit frame number from the given t
+     * @param t The t value to get teh corresponding frame number of
+     * @return The frame number from the given t value [0, 1]
+     */
+    public double getPathFrame(double t) {
+        return lut.getX(t);
     }
 }

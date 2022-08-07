@@ -16,9 +16,9 @@ public class LUTTest {
                 new Point(6, 10)
         });
 
-        System.out.println("Test 1: " + (lut.get(0) == 1));
-        System.out.println("Test 2: " + (lut.get(0.5) == 2));
-        System.out.println("Test 3: " + (lut.get(5) == 9));
-        System.out.println("Test 4: " + (lut.get(6) == 10));
+        System.out.println("Test 1: " + (lut.getY(0) == 1));
+        System.out.println("Test 2: " + (lut.getY(0.5) == 2));
+        System.out.println("Test 3: " + (lut.getY(5) == 9));
+        System.out.println("Test 4: " + (lut.getY(6) == 10));
     }
 }

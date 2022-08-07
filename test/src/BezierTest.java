@@ -6,13 +6,9 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 import util.BezierFit;
-import util.BezierRANSAC;
 import util.LUT;
-import util.Serialize;
 
 import java.io.*;
-import java.sql.Array;
-import java.sql.Time;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -432,8 +428,8 @@ public class BezierTest {
             if(frameNum > 515)
                 break;
 
-            double t = lut.get(frameNum);
-            Point curr = fit.getPoint(pascal, lut.get(frameNum));
+            double t = lut.getY(frameNum);
+            Point curr = fit.getPoint(pascal, lut.getY(frameNum));
 
             if(prev != null && t >= 0 && t <= 1) {
                 System.out.println("LUT: " + frameNum + " -> " + t + " Line: " + prev + " -> " + curr);
