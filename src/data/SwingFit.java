@@ -27,7 +27,7 @@ public class SwingFit {
      * @param startFrame The frame to start the video
      * @param endFrame The frame to end the video
      */
-    public void showVid(String filePath, int startFrame, int endFrame) {
+    public void showVid(String filePath, int startFrame, int endFrame, ShowFrameCallback callback) {
         VideoCapture vid = new VideoCapture(filePath);
         vid.set(Videoio.CAP_PROP_POS_FRAMES, startFrame);
         int fps = (int) vid.get(Videoio.CAP_PROP_FPS);
@@ -46,7 +46,7 @@ public class SwingFit {
         Point prev = null;
 
         while(ok) {
-            Mat animation = Mat.zeros(vidCap.size(), CvType.CV_8UC3);
+            Mat animation = vidCap.clone();
 
             if(frameNum >= lut.getLowerBound() && frameNum <= lut.getUpperBound()) {
                 double t = lut.getY(frameNum);
@@ -55,10 +55,12 @@ public class SwingFit {
                 if(prev != null && t >= 0 && t <= 1)
                     Imgproc.line(tracer, prev, curr, new Scalar(100, 255, 100));
 
-                Core.addWeighted(vidCap, 0.4, tracer, 0.6, 0, animation);
+                Core.addWeighted(animation, 0.4, tracer, 0.6, 0, animation);
 
                 prev = curr;
             }
+
+            callback.onShowFrame(animation, frameNum);
 
             HighGui.imshow("Swing Tracer Animation", animation);
             HighGui.waitKey(1000 / fps);
@@ -69,14 +71,6 @@ public class SwingFit {
             if(frameNum > endFrame)
                 ok = false;
         }
-    }
-
-    public BezierFit getPathFit() {
-        return pathFit;
-    }
-
-    public BezierFit getSpeedFit() {
-        return speedFit;
     }
 
     /**
@@ -95,5 +89,33 @@ public class SwingFit {
      */
     public double getPathFrame(double t) {
         return lut.getX(t);
+    }
+
+    public BezierFit getPathFit() {
+        return pathFit;
+    }
+
+    public BezierFit getSpeedFit() {
+        return speedFit;
+    }
+
+    /**
+     * x: frame, y: t
+     * @return Returns the LUT from speedFit
+     */
+    public LUT getLUT() {
+        return lut;
+    }
+
+    /**
+     * Callback for showing the video
+     */
+    public interface ShowFrameCallback {
+        /**
+         * Method that gets called before each frame is shown
+         * @param out The mat frame to be shown
+         * @param frame The frame that will get displayed
+         */
+        void onShowFrame(Mat out, int frame);
     }
 }

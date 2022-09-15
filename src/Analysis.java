@@ -8,11 +8,15 @@ public class Analysis {
     private SwingFit swing;
     private Circle ball;
 
+    private int videoFPS;
+
     private double impactFrame;
 
-    public Analysis(SwingFit swing, Circle ball) {
+    public Analysis(SwingFit swing, Circle ball, int videoFPS) {
         this.swing = swing;
         this.ball = ball;
+
+        this.videoFPS = videoFPS;
 
         impactFrame = 0;
 
@@ -29,13 +33,45 @@ public class Analysis {
         System.out.println("Impact Frame: " + impactFrame);
     }
 
+    public double getAttackAngle(double frame) {
+        if(frame < swing.getLUT().getLowerBound() || frame > swing.getLUT().getUpperBound())
+            return -1;
+
+        double t1 = swing.getPathT(frame);
+        double t2 = t1 + 0.01;
+
+        Point p1 = swing.getPathFit().getPoint(t1);
+        Point p2 = swing.getPathFit().getPoint(t2);
+
+        Point normalized = new Point(p2.x - p1.x, p1.y - p2.y);
+        return Math.atan2(normalized.y, normalized.x) * 180 / Math.PI;
+    }
+
     /**
      * Gets the swing speed at any given frame
      * @param frame The frame to get the swing speed of (must be within the bounds of SwingFit)
-     * @return Returns the speed of the golf swing in mph
+     * @return Returns the speed of the golf swing in mph or -1 if the frame # is out of bounds of the path
      */
     public double getSpeed(double frame) {
-        return 0;
+        if(frame < swing.getLUT().getLowerBound() || frame > swing.getLUT().getUpperBound())
+            return -1;
+
+        // change if frame is max
+
+        double t1 = swing.getPathT(frame);
+        double t2 = t1 + 0.01;
+
+        double frame2 = swing.getPathFrame(t2);
+        double dt = (frame2 - frame) / videoFPS; // seconds
+
+        Point p1 = swing.getPathFit().getPoint(t1);
+        Point p2 = swing.getPathFit().getPoint(t2);
+
+        double ds = Math.abs(inches(distance(p1, p2))); // change in distance
+
+        double speed = ds / dt; // inches per second
+
+        return speed / 63360 * 60 * 60; // convert to mph
     }
 
     private double distance(Point p1, Point p2) {
@@ -43,6 +79,10 @@ public class Analysis {
     }
 
     private double inches(double pixels) {
-        return pixels * (ball.getRadius() / (BALL_DIAMETER / 2));
+        return pixels * (BALL_DIAMETER / 2) / ball.getRadius();
+    }
+
+    public double getImpactFrame() {
+        return impactFrame;
     }
 }

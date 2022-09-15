@@ -1,6 +1,7 @@
 import data.Circle;
 import data.SwingFit;
 import data.TimedPoint;
+import data.testData.SwingPoints;
 import org.opencv.core.*;
 import org.opencv.features2d.BFMatcher;
 import org.opencv.features2d.Features2d;
@@ -11,6 +12,7 @@ import org.opencv.videoio.Videoio;
 import org.opencv.xfeatures2d.SURF;
 import util.BezierFit;
 
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -35,6 +37,7 @@ public class KeypointTracking {
 
     private Point downswingPoint;
     private int downswingFrame;
+    private int downswingEndFrame;
     private int downswingFrameYVal;
     private int downswingFrameXVal;
 
@@ -46,6 +49,7 @@ public class KeypointTracking {
 
     private int frame;
     private int endFrame;
+    private int fps;
 
     private Mat tracer;
 
@@ -69,6 +73,7 @@ public class KeypointTracking {
 
         downswingPoint = null;
         downswingFrame = 0;
+        downswingEndFrame = 0;
         downswingFrameYVal = 0;
         downswingFrameXVal = 0;
 
@@ -80,6 +85,7 @@ public class KeypointTracking {
 
         frame = startFrame;
         this.endFrame = endFrame;
+        fps = 0;
 
         tracer = new Mat();
 
@@ -102,7 +108,14 @@ public class KeypointTracking {
      * @return Returns a BezierFit representing the curve of best fit for the path of the downswing
      */
     public BezierFit fitPath() {
-        BezierFit fit = BezierFit.RANSACRecursive(medianPointsDownswing, 5, 20, 10, (int) 1e5);
+//        ArrayList<TimedPoint> medianPointsDownswing = SwingPoints.Tiger.medianPointsDownswing;
+//        ArrayList<TimedPoint> downswingPoints = SwingPoints.Tiger.downwingPoints;
+//        Point referencePoint = SwingPoints.Tiger.referencePoint;
+//        tracer = Mat.zeros(new Size(790, 720), CvType.CV_8UC3);
+
+        long start = System.currentTimeMillis();
+        BezierFit fit = BezierFit.RANSACRecursive(medianPointsDownswing, 7, medianPointsDownswing.size() / 2, 10, (int) 1e5);
+        System.out.println("Path Fit Time: " + ((System.currentTimeMillis() - start) / 1000.0));
 
         if(flag(FLAG_DISPLAY_INFO)) {
 //            tracer = Mat.zeros(trackingLines.size(), CvType.CV_8UC3);
@@ -133,9 +146,13 @@ public class KeypointTracking {
      * @return Returns a BezierFit representing the curve of best fit for speed of the downswing
      */
     public BezierFit fitSpeed(BezierFit pathFit) {
+//        ArrayList<TimedPoint> medianPointsDownswing = SwingPoints.Tiger.medianPointsDownswing;
+
         ArrayList<Point> rawFrameToT = new ArrayList<Point>(); // x: frame, y: t
 
         ArrayList<TimedPoint> filtered = new ArrayList<TimedPoint>();
+
+        // aren't these just downswing points?
 
         if(medianPointsDownswing.size() > 0)
             filtered.add(medianPointsDownswing.get(0));
@@ -154,7 +171,28 @@ public class KeypointTracking {
                 rawFrameToT.add(new Point(p.frame, t));
         }
 
-        return new BezierFit(rawFrameToT, 3);
+        BezierFit speedFit = new BezierFit(rawFrameToT, 4);
+
+        Mat speed = Mat.zeros(500, (int) ((rawFrameToT.get(rawFrameToT.size() - 1).x - rawFrameToT.get(0).x) * 5), CvType.CV_8UC3);
+        Point[] speedPoints = speedFit.getPoints(0.01);
+
+        Point first = rawFrameToT.get(0);
+
+        for(Point p : rawFrameToT)
+            Imgproc.circle(speed, new Point((p.x - first.x) * 5, p.y * 500), 3, new Scalar(255, 255, 255));
+
+        for(int i = 1; i < speedPoints.length; i++) {
+            Point p1 = speedPoints[i];
+            Point p2 = speedPoints[i - 1];
+
+            Imgproc.line(speed, new Point((p1.x - first.x) * 5, p1.y * 500), new Point((p2.x - first.x) * 5, p2.y * 500), new Scalar(255, 100, 255));
+        }
+
+        System.out.println("Showing speed fit: press any key to continue...");
+        HighGui.imshow("Speed fit", speed);
+        HighGui.waitKey(0);
+
+        return speedFit;
     }
 
     /**
@@ -162,7 +200,7 @@ public class KeypointTracking {
      */
     private void findKeyPoints() {
         VideoCapture capture = new VideoCapture(fileName);
-        int fps = 120;//(int) capture.get(Videoio.CAP_PROP_FPS);
+        fps = (int) capture.get(Videoio.CAP_PROP_FPS);
 
         capture.set(Videoio.CAP_PROP_POS_FRAMES, frame);
 
@@ -184,47 +222,6 @@ public class KeypointTracking {
 
             System.out.println("Frame: " + frame);
 
-            if(frame == endFrame) {
-                postprocess();
-
-                if(flag(FLAG_DISPLAY_INFO)) {
-                    for(TimedPoint p : downswingPoints)
-                        System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
-
-                    System.out.println("Median points downswing:");
-                    for(TimedPoint p : medianPointsDownswing)
-                        System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
-
-                    yGraph = Mat.zeros(curr.rows(), blurredY.size(), CvType.CV_8UC3);
-                    for(int i = 0; i < blurredY.size(); i++)
-                        Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
-
-                    xGraph = Mat.zeros(curr.rows(), blurredX.size(), CvType.CV_8UC3);
-                    for(int i = 0; i < blurredX.size(); i++)
-                        Imgproc.circle(xGraph, new Point(i, blurredX.get(i)), 3, new Scalar(255, 70, 255), -1);
-
-                    Imgproc.circle(yGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameYVal), 5, new Scalar(255, 255, 255), -1);
-                    Imgproc.line(trackingLines, new Point(0, downswingFrameYVal), new Point(curr.cols() - 1, downswingFrameYVal), new Scalar(0, 255, 0));
-                    Imgproc.putText(yGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                    Imgproc.putText(yGraph, blurredY.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                    HighGui.imshow("YGraph", yGraph);
-
-                    Imgproc.circle(xGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameXVal), 5, new Scalar(255, 255, 255), -1);
-                    Imgproc.putText(xGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                    Imgproc.putText(xGraph, blurredX.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
-                    HighGui.imshow("XGraph", xGraph);
-
-                    Imgproc.circle(trackingLines, downswingPoint, 3, new Scalar(255, 70, 255), -1);
-
-                    segmentation = Mat.zeros(curr.size(), CvType.CV_8UC3);
-                    for(TimedPoint p : backswingPoints)
-                        Imgproc.circle(segmentation, p, 3, new Scalar(255, 0, 0), -1);
-
-                    for(TimedPoint p : downswingPoints)
-                        Imgproc.circle(segmentation, p, 3, new Scalar(100, 255, 255), -1);
-                }
-            }
-
             if(!prev.empty() && !curr.empty()) {
                 boolean bufferFull = handleBuffer(processedBuffer, curr, prev);
 
@@ -238,7 +235,6 @@ public class KeypointTracking {
 
                         HighGui.imshow("Preprocess", preprocess(curr, prev));
                         HighGui.imshow("Track", trackInfo);
-
                     }
                 }
 
@@ -250,8 +246,56 @@ public class KeypointTracking {
 
             prev = curr.clone();
             ok = capture.read(curr);
+
+            System.out.println("OK: " + ok);
         }
 
+        // post processing
+        if(blurredY.size() == 0) {
+            postprocess();
+
+            if(flag(FLAG_DISPLAY_INFO)) {
+                System.out.println("ReferencePoint: " + referencePoint);
+
+                System.out.println("Downswing points:");
+                for(TimedPoint p : downswingPoints)
+                    System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
+
+                System.out.println("Median points downswing:");
+                for(TimedPoint p : medianPointsDownswing)
+                    System.out.println("new TimedPoint(" + p.frame + ", new Point(" + p.x + ", " + p.y + ")),");
+
+                yGraph = Mat.zeros(curr.rows(), blurredY.size(), CvType.CV_8UC3);
+                for(int i = 0; i < blurredY.size(); i++)
+                    Imgproc.circle(yGraph, new Point(i, blurredY.get(i)), 3, new Scalar(255, 255, 70), -1);
+
+                xGraph = Mat.zeros(curr.rows(), blurredX.size(), CvType.CV_8UC3);
+                for(int i = 0; i < blurredX.size(); i++)
+                    Imgproc.circle(xGraph, new Point(i, blurredX.get(i)), 3, new Scalar(255, 70, 255), -1);
+
+                Imgproc.circle(yGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameYVal), 5, new Scalar(255, 255, 255), -1);
+                Imgproc.line(trackingLines, new Point(0, downswingFrameYVal), new Point(curr.cols() - 1, downswingFrameYVal), new Scalar(0, 255, 0));
+                Imgproc.putText(yGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                Imgproc.putText(yGraph, blurredY.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                HighGui.imshow("YGraph", yGraph);
+
+                Imgproc.circle(xGraph, new Point(downswingFrame - medianPoints.get(0).frame, downswingFrameXVal), 5, new Scalar(255, 255, 255), -1);
+                Imgproc.putText(xGraph, downswingFrame + "", new Point(0, 100), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                Imgproc.putText(xGraph, blurredX.size() + "", new Point(0, 200), Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(255, 255, 255));
+                HighGui.imshow("XGraph", xGraph);
+
+                Imgproc.circle(trackingLines, downswingPoint, 3, new Scalar(255, 70, 255), -1);
+
+                segmentation = Mat.zeros(curr.size(), CvType.CV_8UC3);
+                for(TimedPoint p : backswingPoints)
+                    Imgproc.circle(segmentation, p, 3, new Scalar(255, 0, 0), -1);
+
+                for(TimedPoint p : downswingPoints)
+                    Imgproc.circle(segmentation, p, 3, new Scalar(100, 255, 255), -1);
+            }
+        }
+
+        // wrong order? this block shoudl get called continuously after, but the one above only once <-- check if null?
         if(flag(FLAG_DISPLAY_INFO)) {
             HighGui.imshow("Tracking Lines", trackingLines);
             HighGui.imshow("YGraph", yGraph);
@@ -274,6 +318,8 @@ public class KeypointTracking {
 //        Imgproc.Canny(prev, prevCanny, 100, 200);
 
         Core.absdiff(curr, prev, res);
+
+        // TODO: ADD A THRESHHOLD?
 
         // sharpen
         Imgproc.cvtColor(res, res, Imgproc.COLOR_BGR2GRAY);
@@ -448,7 +494,7 @@ public class KeypointTracking {
      * @param curr The current frame
      */
     private void findBall(Mat curr) {
-        if(referencePoint == null)
+        if(referencePoint == null || medianPoints.size() == 0)
             return;
 
         Mat gray = new Mat();
@@ -457,7 +503,7 @@ public class KeypointTracking {
         Imgproc.medianBlur(gray, gray, 5);
 
         Mat circles = new Mat();
-        Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 1, (double) gray.rows() / 16, 300, 15,
+        Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 1, (double) gray.rows() / 16, 260, 6,
                 1, 15);
 
         ArrayList<Circle> guesses = new ArrayList<Circle>();
@@ -472,16 +518,26 @@ public class KeypointTracking {
         }
 
         double minDist = Integer.MAX_VALUE;
-        Point firstClub = medianPoints.get(0);
+        Point estimation = new Point(referencePoint.x, medianPoints.get(0).y);
         for(Circle c : guesses) {
             // find point closest to initial club keypoint
-            double dist = distance(firstClub, c.getCenter());
+            double dist = distance(estimation, c.getCenter());
 
             if(dist < minDist) {
                 ball = c;
 
                 minDist = dist;
             }
+        }
+
+        if(ball != null) {
+            System.out.println("Ball: " + ball + ", " + fps);
+
+            Mat out = curr.clone();
+            for(Circle c : guesses)
+                Imgproc.circle(out, c.getCenter(), (int) c.getRadius(), new Scalar(255, 100, 100));
+
+            Imgproc.circle(out, ball.getCenter(), (int) ball.getRadius(), new Scalar(100, 255, 100));
         }
     }
 
@@ -508,7 +564,12 @@ public class KeypointTracking {
 //            }
 //        }
 
-        // find point of inflection to find downswing frame
+
+        // find downswing start and end frames
+
+        int idx = 0;
+
+        // find point of inflection to find downswing end frame
         boolean check = false;
         for(int i = 2; i < blurredY.size() - 1; i++) {
             double prevV = blurredY.get(i - 1) - blurredY.get(i - 2);
@@ -523,22 +584,37 @@ public class KeypointTracking {
                     downswingFrame = (int) medianPoints.get(i).frame;
                     downswingFrameYVal = (int) (double) blurredY.get(i);
 
+                    idx = i + 1;
+
                     i = blurredY.size();
                 }
             }
         }
 
-        for(int i = 3; i < blurredX.size() - 3; i++) {
-            double curr = blurredX.get(i);
+        downswingEndFrame = (int) medianPoints.get(medianPoints.size() - 1).frame;
 
-            if(blurredX.get(i - 2) < curr && blurredX.get(i - 1) < curr &&
-                    blurredX.get(i + 1) < curr && blurredX.get(i + 2) < curr) {
-//                downswingFrame = keyPointBasedTime.get(i);
-                downswingFrameXVal = (int) curr;
+        for(int i = idx; i < blurredY.size()- 1; i++) {
+            double prev = blurredY.get(i - 1);
+            double curr = blurredY.get(i);
+            double next = blurredY.get(i + 1);
 
-                i = blurredX.size();
-            }
+            if(curr <= prev && curr <= next)
+                downswingEndFrame = (int) medianPoints.get(i).frame;
         }
+
+        System.out.println("DOWNSWING END FRAME: " + downswingEndFrame);
+
+//        for(int i = 3; i < blurredX.size() - 3; i++) {
+//            double curr = blurredX.get(i);
+//
+//            if(blurredX.get(i - 2) < curr && blurredX.get(i - 1) < curr &&
+//                    blurredX.get(i + 1) < curr && blurredX.get(i + 2) < curr) {
+////                downswingFrame = keyPointBasedTime.get(i);
+//                downswingFrameXVal = (int) curr;
+//
+//                i = blurredX.size();
+//            }
+//        }
 
         for(int i = 0; i < points.size(); i++) {
             TimedPoint p = points.get(i);
@@ -585,7 +661,7 @@ public class KeypointTracking {
         }
 
         double radius = Math.min(maxY - minY, maxX - minX) / 2;
-        double radiusPercentage = 0.7;
+        double radiusPercentage = 0.4;
         Point center = new Point(referencePoint.x, minY + (maxY - minY) / 2);
 
         for(int i = medianPointsDownswing.size() - 1; i >= 0; i--) {
@@ -651,6 +727,8 @@ public class KeypointTracking {
 
             i += currMultiplier - 1;
         }
+
+        System.out.println("POST: " + medianPointsDownswing.size());
     }
 
     /**
@@ -823,5 +901,9 @@ public class KeypointTracking {
 
     public Circle getBall() {
         return ball;
+    }
+
+    public int getFPS() {
+        return fps;
     }
 }
